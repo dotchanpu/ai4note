@@ -1,0 +1,33 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ai4note-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai4note}
+      MYSQL_USER: ${MYSQL_USER:-ai4note}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ai4note123}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/constraints.sql:/docker-entrypoint-initdb.d/02-constraints.sql:ro
+      - ./database/triggers.sql:/docker-entrypoint-initdb.d/03-triggers.sql:ro
+      - ./database/procedures.sql:/docker-entrypoint-initdb.d/04-procedures.sql:ro
+      - ./database/init-data.sql:/docker-entrypoint-initdb.d/05-init-data.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "${MYSQL_USER:-ai4note}", "-p${MYSQL_PASSWORD:-ai4note123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql-data:
+
