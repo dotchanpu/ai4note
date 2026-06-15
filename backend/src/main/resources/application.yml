@@ -6,8 +6,8 @@ spring:
     name: ai4note-backend
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ai4note}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-    username: ${DB_USERNAME:ai4note}
-    password: ${DB_PASSWORD:ai4note123}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 ai4note:

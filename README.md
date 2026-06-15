@@ -65,8 +65,8 @@ Copy-Item .env.example .env
 
 ```text
 数据库名：ai4note
-用户名：ai4note
-密码：ai4note123
+用户名：root
+密码：123456
 端口：3306
 ```
 
@@ -76,8 +76,8 @@ Copy-Item .env.example .env
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=ai4note
-DB_USERNAME=你的用户名
-DB_PASSWORD=你的密码
+DB_USERNAME=root
+DB_PASSWORD=123456
 ```
 
 ### 2. 初始化本地 MySQL 数据库
@@ -88,17 +88,17 @@ DB_PASSWORD=你的密码
 mysqladmin ping -h localhost -P 3306 -u root -p
 ```
 
-使用有建库权限的账号执行初始化脚本：
+使用本地默认账号 `root/123456` 执行初始化脚本：
 
-```bash
-mysql -h localhost -P 3306 -u root -p < database/schema.sql
-mysql -h localhost -P 3306 -u root -p < database/constraints.sql
-mysql -h localhost -P 3306 -u root -p < database/triggers.sql
-mysql -h localhost -P 3306 -u root -p < database/procedures.sql
-mysql -h localhost -P 3306 -u root -p < database/init-data.sql
+```powershell
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\schema.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\constraints.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\triggers.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\procedures.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\init-data.sql"
 ```
 
-如果希望使用项目默认账号 `ai4note/ai4note123`，先用 root 或管理员账号执行：
+如果后续希望切换为独立开发账号 `ai4note/ai4note123`，可以额外执行：
 
 ```sql
 CREATE USER IF NOT EXISTS 'ai4note'@'localhost' IDENTIFIED BY 'ai4note123';
@@ -111,7 +111,7 @@ FLUSH PRIVILEGES;
 也可以直接执行项目提供的本地账号初始化脚本：
 
 ```bash
-mysql -h localhost -P 3306 -u root -p < database/local-user.sql
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\local-user.sql"
 ```
 
 ### 3. 启动后端
@@ -163,18 +163,18 @@ http://localhost:5173
 
 初始化本地数据库：
 
-```bash
-mysql -h localhost -P 3306 -u root -p < database/schema.sql
-mysql -h localhost -P 3306 -u root -p < database/constraints.sql
-mysql -h localhost -P 3306 -u root -p < database/triggers.sql
-mysql -h localhost -P 3306 -u root -p < database/procedures.sql
-mysql -h localhost -P 3306 -u root -p < database/init-data.sql
+```powershell
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\schema.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\constraints.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\triggers.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\procedures.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\init-data.sql"
 ```
 
 创建默认开发账号：
 
 ```bash
-mysql -h localhost -P 3306 -u root -p < database/local-user.sql
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\local-user.sql"
 ```
 
 可选：使用 Docker 启动 MySQL：
