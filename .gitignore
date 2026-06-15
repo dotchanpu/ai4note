@@ -1,6 +1,7 @@
 # OS and editor
 .DS_Store
 Thumbs.db
+NUL
 .idea/
 .vscode/
 
@@ -26,4 +27,3 @@ storage/exports/**/*
 
 # Logs
 *.log
-
