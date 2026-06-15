@@ -1,0 +1,29 @@
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Office temporary files
+~$*
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Backend
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Runtime storage
+storage/uploads/**/*
+storage/parsed-text/**/*
+storage/exports/**/*
+!storage/uploads/**/.gitkeep
+!storage/parsed-text/.gitkeep
+!storage/exports/.gitkeep
+
+# Logs
+*.log
+

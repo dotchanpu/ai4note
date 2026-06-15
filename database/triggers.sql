@@ -1,0 +1,13 @@
+USE ai4note;
+
+DELIMITER //
+
+CREATE TRIGGER trg_material_update_time
+BEFORE UPDATE ON material
+FOR EACH ROW
+BEGIN
+  SET NEW.update_time = CURRENT_TIMESTAMP;
+END//
+
+DELIMITER ;
+
