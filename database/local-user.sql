@@ -1,0 +1,8 @@
+CREATE USER IF NOT EXISTS 'ai4note'@'localhost' IDENTIFIED BY 'ai4note123';
+CREATE USER IF NOT EXISTS 'ai4note'@'%' IDENTIFIED BY 'ai4note123';
+
+GRANT ALL PRIVILEGES ON ai4note.* TO 'ai4note'@'localhost';
+GRANT ALL PRIVILEGES ON ai4note.* TO 'ai4note'@'%';
+
+FLUSH PRIVILEGES;
+

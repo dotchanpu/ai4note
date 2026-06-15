@@ -8,8 +8,8 @@
 
 - 前端：Vue 3、Vite、Element Plus、Axios、Pinia、Vue Router
 - 后端：Java 8、Spring Boot 2.7、MySQL Connector、Apache PDFBox
-- 数据库：MySQL 8
-- 环境编排：Docker Compose
+- 数据库：本地 MySQL 8
+- 环境编排：Docker Compose，可选
 
 ## 项目结构
 
@@ -33,7 +33,7 @@
 - Maven 3.9+
 - Node.js 20+
 - npm 10+
-- Docker Desktop
+- MySQL 8
 
 检查命令：
 
@@ -42,8 +42,7 @@ java -version
 mvn -version
 node -v
 npm -v
-docker -v
-docker compose version
+mysql --version
 ```
 
 ## 快速启动
@@ -71,26 +70,48 @@ Copy-Item .env.example .env
 端口：3306
 ```
 
-### 2. 启动数据库
+如果你使用已有 MySQL 账号，请修改 `.env` 和 `backend/src/main/resources/application.yml` 对应配置，或在启动后端前设置环境变量：
 
-在项目根目录执行：
-
-```bash
-docker compose up -d mysql
+```text
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=ai4note
+DB_USERNAME=你的用户名
+DB_PASSWORD=你的密码
 ```
 
-首次启动会自动执行 `database/` 下的建表、约束、触发器、存储过程和初始化数据脚本。
+### 2. 初始化本地 MySQL 数据库
 
-查看数据库状态：
+确认本地 MySQL 服务已启动：
 
 ```bash
-docker compose ps
+mysqladmin ping -h localhost -P 3306 -u root -p
 ```
 
-查看数据库日志：
+使用有建库权限的账号执行初始化脚本：
 
 ```bash
-docker compose logs -f mysql
+mysql -h localhost -P 3306 -u root -p < database/schema.sql
+mysql -h localhost -P 3306 -u root -p < database/constraints.sql
+mysql -h localhost -P 3306 -u root -p < database/triggers.sql
+mysql -h localhost -P 3306 -u root -p < database/procedures.sql
+mysql -h localhost -P 3306 -u root -p < database/init-data.sql
+```
+
+如果希望使用项目默认账号 `ai4note/ai4note123`，先用 root 或管理员账号执行：
+
+```sql
+CREATE USER IF NOT EXISTS 'ai4note'@'localhost' IDENTIFIED BY 'ai4note123';
+CREATE USER IF NOT EXISTS 'ai4note'@'%' IDENTIFIED BY 'ai4note123';
+GRANT ALL PRIVILEGES ON ai4note.* TO 'ai4note'@'localhost';
+GRANT ALL PRIVILEGES ON ai4note.* TO 'ai4note'@'%';
+FLUSH PRIVILEGES;
+```
+
+也可以直接执行项目提供的本地账号初始化脚本：
+
+```bash
+mysql -h localhost -P 3306 -u root -p < database/local-user.sql
 ```
 
 ### 3. 启动后端
@@ -140,29 +161,32 @@ http://localhost:5173
 
 ## 常用命令
 
-启动数据库：
+初始化本地数据库：
+
+```bash
+mysql -h localhost -P 3306 -u root -p < database/schema.sql
+mysql -h localhost -P 3306 -u root -p < database/constraints.sql
+mysql -h localhost -P 3306 -u root -p < database/triggers.sql
+mysql -h localhost -P 3306 -u root -p < database/procedures.sql
+mysql -h localhost -P 3306 -u root -p < database/init-data.sql
+```
+
+创建默认开发账号：
+
+```bash
+mysql -h localhost -P 3306 -u root -p < database/local-user.sql
+```
+
+可选：使用 Docker 启动 MySQL：
 
 ```bash
 docker compose up -d mysql
 ```
 
-停止数据库：
+停止 Docker MySQL：
 
 ```bash
 docker compose down
-```
-
-停止数据库并删除数据卷：
-
-```bash
-docker compose down -v
-```
-
-重新初始化数据库：
-
-```bash
-docker compose down -v
-docker compose up -d mysql
 ```
 
 运行后端：
@@ -188,7 +212,7 @@ npm run build
 
 ## 数据库脚本说明
 
-Docker Compose 会按以下顺序初始化数据库：
+本地 MySQL 和 Docker MySQL 都使用同一组脚本：
 
 ```text
 database/schema.sql       # 建库建表
@@ -196,9 +220,10 @@ database/constraints.sql  # 检查约束
 database/triggers.sql     # 触发器
 database/procedures.sql   # 存储过程
 database/init-data.sql    # 初始化数据
+database/local-user.sql   # 本地开发账号，可选
 ```
 
-如果修改了数据库脚本，并希望重新执行初始化，需要删除 MySQL 数据卷：
+如果使用 Docker MySQL，首次启动会自动执行 `database/` 下挂载的初始化脚本。如果修改了数据库脚本，并希望 Docker 重新执行初始化，需要删除 MySQL 数据卷：
 
 ```bash
 docker compose down -v
