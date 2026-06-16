@@ -32,3 +32,21 @@ ALTER TABLE teacher_profile
 
 ALTER TABLE teacher_profile_evidence
   ADD CONSTRAINT ck_teacher_evidence_confidence CHECK (confidence_score IS NULL OR confidence_score BETWEEN 0 AND 100);
+
+ALTER TABLE user_knowledge_status
+  ADD CONSTRAINT ck_mastery_status CHECK (mastery_status IN ('UNKNOWN', 'LEARNING', 'MASTERED', 'WEAK', 'NEED_REVIEW'));
+
+ALTER TABLE user_knowledge_status
+  ADD CONSTRAINT ck_mastery_score CHECK (mastery_score IS NULL OR mastery_score BETWEEN 0 AND 100);
+
+ALTER TABLE exam_question_knowledge_map
+  ADD CONSTRAINT ck_question_map_confidence CHECK (confidence_score IS NULL OR confidence_score BETWEEN 0 AND 100);
+
+ALTER TABLE knowledge_gap_report
+  ADD CONSTRAINT ck_gap_include_prerequisites CHECK (include_prerequisites IN (0, 1));
+
+ALTER TABLE knowledge_gap_item
+  ADD CONSTRAINT ck_gap_type CHECK (gap_type IN ('PREREQUISITE_MISSING', 'LOW_MASTERY', 'HIGH_FREQUENCY_WEAK', 'UNREVIEWED'));
+
+ALTER TABLE knowledge_gap_item
+  ADD CONSTRAINT ck_gap_severity CHECK (severity_level BETWEEN 1 AND 5);

@@ -24,6 +24,20 @@
 - `POST /api/materials/{id}/parse`: 解析资料文本
 - `GET /api/search`: 检索资料
 
+## Exam Question Mapping
+
+- `POST /api/materials/{materialId}/exam-questions/extract`: 从真题资料中抽取题目
+- `GET /api/courses/{courseId}/exam-questions`: 查询课程真题题目
+- `POST /api/exam-questions/{questionId}/knowledge-map`: 建立题目与知识点映射
+- `GET /api/courses/{courseId}/exam-knowledge-stats`: 统计课程高频考点
+
+## Knowledge Gap
+
+- `PUT /api/knowledge-items/{id}/mastery`: 更新用户知识点掌握状态
+- `POST /api/courses/{courseId}/knowledge-gap-reports`: 生成知识缺口报告
+- `GET /api/knowledge-gap-reports/{id}`: 查看知识缺口报告
+- `GET /api/knowledge-gap-reports/{id}/items`: 查看知识缺口明细
+
 ## Teacher Profile
 
 - `GET /api/courses/{courseId}/teacher-profiles`: 查询教师画像

@@ -230,6 +230,7 @@ database/migrations/      # 已有数据库升级脚本
 cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\001_course_relation_ai_generation.sql"
 cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\002_ai_generation_constraints.sql"
 cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\003_teacher_profile_ai_evidence.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\004_exam_mapping_and_gap_detection.sql"
 ```
 
 如果使用 Docker MySQL，首次启动会自动执行 `database/` 下挂载的初始化脚本。如果修改了数据库脚本，并希望 Docker 重新执行初始化，需要删除 MySQL 数据卷：
