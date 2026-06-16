@@ -17,7 +17,7 @@
 .
 ├─ frontend/                 # Vue 3 前端项目
 ├─ backend/                  # Spring Boot 后端项目
-├─ database/                 # 数据库建表、约束、触发器、存储过程脚本
+├─ database/                 # 数据库建表、约束、触发器、存储过程和迁移脚本
 ├─ storage/                  # 上传文件、解析文本、导出知识包目录
 ├─ docs/                     # 课程设计文档
 ├─ course-agent-kb-template/ # Agent 知识库导出模板
@@ -221,6 +221,14 @@ database/triggers.sql     # 触发器
 database/procedures.sql   # 存储过程
 database/init-data.sql    # 初始化数据
 database/local-user.sql   # 本地开发账号，可选
+database/migrations/      # 已有数据库升级脚本
+```
+
+已有数据库升级时，按编号顺序执行 `database/migrations/` 下的脚本：
+
+```powershell
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\001_course_relation_ai_generation.sql"
+cmd /c "mysql -h localhost -P 3306 -u root -p123456 < database\migrations\002_ai_generation_constraints.sql"
 ```
 
 如果使用 Docker MySQL，首次启动会自动执行 `database/` 下挂载的初始化脚本。如果修改了数据库脚本，并希望 Docker 重新执行初始化，需要删除 MySQL 数据卷：
