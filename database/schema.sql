@@ -154,16 +154,33 @@ CREATE TABLE teacher_profile (
   user_id BIGINT NOT NULL,
   course_id BIGINT NOT NULL,
   teacher_name VARCHAR(128) NOT NULL,
+  generated_by_ai TINYINT NOT NULL DEFAULT 1,
+  analysis_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  confidence_score DECIMAL(5,2),
   exam_style TEXT,
   question_preference TEXT,
   grading_preference TEXT,
   focus_topics TEXT,
   avoid_topics TEXT,
   source_summary TEXT,
+  last_analyzed_time DATETIME,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_teacher_user FOREIGN KEY (user_id) REFERENCES user_account(id),
   CONSTRAINT fk_teacher_course FOREIGN KEY (course_id) REFERENCES course(id)
+);
+
+CREATE TABLE teacher_profile_evidence (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  teacher_profile_id BIGINT NOT NULL,
+  material_id BIGINT NOT NULL,
+  evidence_type VARCHAR(32) NOT NULL,
+  evidence_summary TEXT,
+  source_page INT,
+  confidence_score DECIMAL(5,2),
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_teacher_evidence_profile FOREIGN KEY (teacher_profile_id) REFERENCES teacher_profile(id),
+  CONSTRAINT fk_teacher_evidence_material FOREIGN KEY (material_id) REFERENCES material(id)
 );
 
 CREATE TABLE ai_provider_config (

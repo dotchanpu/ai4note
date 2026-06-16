@@ -20,3 +20,15 @@ ALTER TABLE review_generation_profile
 
 ALTER TABLE ai_generation_task
   ADD CONSTRAINT ck_ai_task_status CHECK (status IN ('PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'CANCELED'));
+
+ALTER TABLE teacher_profile
+  ADD CONSTRAINT ck_teacher_generated_by_ai CHECK (generated_by_ai IN (0, 1));
+
+ALTER TABLE teacher_profile
+  ADD CONSTRAINT ck_teacher_analysis_status CHECK (analysis_status IN ('PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'MANUAL_REVIEWED'));
+
+ALTER TABLE teacher_profile
+  ADD CONSTRAINT ck_teacher_confidence CHECK (confidence_score IS NULL OR confidence_score BETWEEN 0 AND 100);
+
+ALTER TABLE teacher_profile_evidence
+  ADD CONSTRAINT ck_teacher_evidence_confidence CHECK (confidence_score IS NULL OR confidence_score BETWEEN 0 AND 100);

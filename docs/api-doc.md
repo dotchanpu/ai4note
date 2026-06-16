@@ -27,8 +27,9 @@
 ## Teacher Profile
 
 - `GET /api/courses/{courseId}/teacher-profiles`: 查询教师画像
-- `POST /api/courses/{courseId}/teacher-profiles`: 创建教师画像
-- `PUT /api/teacher-profiles/{id}`: 更新教师画像
+- `POST /api/courses/{courseId}/teacher-profiles/analyze`: 根据课件、真题、实验要求等资料发起教师画像 AI 分析
+- `GET /api/teacher-profiles/{id}/evidence`: 查询教师画像证据来源
+- `PUT /api/teacher-profiles/{id}`: 人工修正或确认教师画像
 - `DELETE /api/teacher-profiles/{id}`: 删除教师画像
 
 ## AI Config And Generation
