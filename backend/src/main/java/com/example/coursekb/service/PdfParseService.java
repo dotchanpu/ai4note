@@ -27,14 +27,17 @@ public class PdfParseService {
     private final MaterialService materialService;
     private final MaterialFileRepository materialFileRepository;
     private final TextChunkRepository textChunkRepository;
+    private final TextChunker textChunker;
 
     public PdfParseService(
             MaterialService materialService,
             MaterialFileRepository materialFileRepository,
-            TextChunkRepository textChunkRepository) {
+            TextChunkRepository textChunkRepository,
+            TextChunker textChunker) {
         this.materialService = materialService;
         this.materialFileRepository = materialFileRepository;
         this.textChunkRepository = textChunkRepository;
+        this.textChunker = textChunker;
     }
 
     @Transactional
@@ -63,13 +66,15 @@ public class PdfParseService {
                     continue;
                 }
 
-                TextChunk chunk = new TextChunk();
-                chunk.setMaterialId(material.getId());
-                chunk.setChunkIndex(chunks.size());
-                chunk.setPageNo(page);
-                chunk.setContent(content);
-                chunk.setWordCount(countContentUnits(content));
-                chunks.add(chunk);
+                for (String chunkContent : textChunker.split(content)) {
+                    TextChunk chunk = new TextChunk();
+                    chunk.setMaterialId(material.getId());
+                    chunk.setChunkIndex(chunks.size());
+                    chunk.setPageNo(page);
+                    chunk.setContent(chunkContent);
+                    chunk.setWordCount(countContentUnits(chunkContent));
+                    chunks.add(chunk);
+                }
                 characterCount += content.length();
             }
         } catch (IOException exception) {
