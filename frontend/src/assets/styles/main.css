@@ -5,9 +5,12 @@ body,
   min-height: 100vh;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   font-family: Arial, "Microsoft YaHei", sans-serif;
   background: #f6f7f9;
   color: #1f2937;
 }
-

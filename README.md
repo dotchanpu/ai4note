@@ -4,6 +4,15 @@
 
 本项目用于整理大学课程资料，包括课件 PDF、实验报告、往年真题、复习笔记等，并支持解析资料文本、检索课程内容、导出 Agent 可读取的课程知识包。
 
+## 当前已实现
+
+- 用户注册与登录，密码使用 BCrypt 保存
+- 用户课程列表与课程创建
+- 课程详情展示
+- 课程章节列表与章节创建
+- 前后端接口错误提示与参数校验
+- Vue 前端基础工作台
+
 ## 技术栈
 
 - 前端：Vue 3、Vite、Element Plus、Axios、Pinia、Vue Router
@@ -139,6 +148,18 @@ http://localhost:8080
 
 ```text
 http://localhost:8080/api/health
+```
+
+基础接口：
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/courses?userId={userId}
+GET  /api/courses/{courseId}?userId={userId}
+POST /api/courses
+GET  /api/courses/{courseId}/chapters?userId={userId}
+POST /api/courses/{courseId}/chapters?userId={userId}
 ```
 
 ### 4. 启动前端

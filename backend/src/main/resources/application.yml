@@ -9,6 +9,14 @@ spring:
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
 
 ai4note:
   storage-root: ${AI4NOTE_STORAGE_ROOT:../storage}
