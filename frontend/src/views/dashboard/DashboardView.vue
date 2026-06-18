@@ -143,6 +143,34 @@
                   <span v-else>-</span>
                 </template>
               </el-table-column>
+              <el-table-column label="解析" width="90" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.parsedChunkCount > 0" type="success" effect="plain">
+                    已解析
+                  </el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="150" align="right">
+                <template #default="{ row }">
+                  <el-button
+                    v-if="row.fileType === 'pdf'"
+                    text
+                    type="primary"
+                    :loading="parsingMaterialId === row.id"
+                    @click="runPdfParse(row)"
+                  >
+                    解析
+                  </el-button>
+                  <el-button
+                    v-if="row.parsedChunkCount > 0"
+                    text
+                    @click="showParsedText(row)"
+                  >
+                    查看
+                  </el-button>
+                </template>
+              </el-table-column>
             </el-table>
           </div>
         </template>
@@ -251,6 +279,23 @@
       <el-button type="primary" :loading="materialSaving" @click="saveMaterial">上传</el-button>
     </template>
   </el-dialog>
+
+  <el-dialog
+    v-model="textPreviewVisible"
+    :title="`${previewMaterial?.title || ''} - 解析文本`"
+    width="760px"
+  >
+    <div v-loading="textChunkLoading" class="text-preview">
+      <section v-for="chunk in textChunks" :key="chunk.id" class="text-page">
+        <div class="text-page-heading">
+          <strong>第 {{ chunk.pageNo }} 页</strong>
+          <span>{{ chunk.wordCount }} 字符</span>
+        </div>
+        <pre>{{ chunk.content }}</pre>
+      </section>
+      <el-empty v-if="!textChunkLoading && textChunks.length === 0" description="暂无解析文本" />
+    </div>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -258,7 +303,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { login, register } from '../../api/auth'
 import { createChapter, createCourse, listChapters, listCourses } from '../../api/course'
-import { listMaterials, uploadMaterial } from '../../api/material'
+import { listMaterials, listTextChunks, parsePdf, uploadMaterial } from '../../api/material'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -269,14 +314,19 @@ const materialLoading = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
+const parsingMaterialId = ref(null)
+const textChunkLoading = ref(false)
 const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
 const materialDialogVisible = ref(false)
+const textPreviewVisible = ref(false)
 const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
 const selectedCourse = ref(null)
 const selectedFile = ref(null)
+const previewMaterial = ref(null)
+const textChunks = ref([])
 
 const authForm = reactive({
   username: '',
@@ -421,6 +471,32 @@ async function saveMaterial() {
     ElMessage.error(error.message)
   } finally {
     materialSaving.value = false
+  }
+}
+
+async function runPdfParse(material) {
+  parsingMaterialId.value = material.id
+  try {
+    const result = await parsePdf(material.id, currentUser.value.id)
+    material.parsedChunkCount = result.chunkCount
+    ElMessage.success(`解析完成，共提取 ${result.chunkCount} 个文本块`)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    parsingMaterialId.value = null
+  }
+}
+
+async function showParsedText(material) {
+  previewMaterial.value = material
+  textPreviewVisible.value = true
+  textChunkLoading.value = true
+  try {
+    textChunks.value = await listTextChunks(material.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    textChunkLoading.value = false
   }
 }
 
@@ -735,6 +811,38 @@ function formatFileSize(size) {
   margin-top: 7px;
   color: #7b858c;
   font-size: 12px;
+}
+
+.text-preview {
+  min-height: 180px;
+  max-height: 65vh;
+  overflow: auto;
+}
+
+.text-page {
+  padding: 16px 0 22px;
+  border-bottom: 1px solid #e2e6e8;
+}
+
+.text-page:first-child {
+  padding-top: 0;
+}
+
+.text-page-heading {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: #637078;
+  font-size: 13px;
+}
+
+.text-page pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .form-grid {

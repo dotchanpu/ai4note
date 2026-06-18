@@ -1,7 +1,10 @@
 package com.example.coursekb.controller;
 
 import com.example.coursekb.service.MaterialService;
+import com.example.coursekb.service.PdfParseService;
+import com.example.coursekb.entity.TextChunk;
 import com.example.coursekb.vo.MaterialVO;
+import com.example.coursekb.vo.PdfParseResultVO;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,9 +18,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class MaterialController {
     private final MaterialService materialService;
+    private final PdfParseService pdfParseService;
 
-    public MaterialController(MaterialService materialService) {
+    public MaterialController(MaterialService materialService, PdfParseService pdfParseService) {
         this.materialService = materialService;
+        this.pdfParseService = pdfParseService;
     }
 
     @GetMapping("/courses/{courseId}/materials")
@@ -55,5 +60,19 @@ public class MaterialController {
                 isKey,
                 summary,
                 file);
+    }
+
+    @PostMapping("/materials/{materialId}/parse")
+    public PdfParseResultVO parse(
+            @PathVariable Long materialId,
+            @RequestParam Long userId) {
+        return pdfParseService.parse(materialId, userId);
+    }
+
+    @GetMapping("/materials/{materialId}/text-chunks")
+    public List<TextChunk> listTextChunks(
+            @PathVariable Long materialId,
+            @RequestParam Long userId) {
+        return pdfParseService.listChunks(materialId, userId);
     }
 }

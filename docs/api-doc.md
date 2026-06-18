@@ -381,17 +381,42 @@ OTHER
 
 ### 8.6 解析资料文本
 
-- 状态：规划中
+- 状态：已实现（PDF）
 - 方法：`POST`
 - 路径：`/api/materials/{materialId}/parse`
 
-系统解析 PDF、Word、Markdown 或 TXT，并按页码和文本块保存结果。
+当前支持 PDF 按页提取文字，并将每个有文字的页面保存为一个文本块。重复解析会覆盖该资料原有的文本块；扫描版 PDF 若无法提取文字会返回业务错误。
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+
+响应示例：
+
+```json
+{
+  "materialId": 10,
+  "pageCount": 24,
+  "chunkCount": 23,
+  "characterCount": 18560
+}
+```
 
 ### 8.7 查询解析文本
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/materials/{materialId}/text-chunks`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+
+响应按 `chunkIndex` 升序返回，字段包括页码、正文和字符数。
 
 ## 9. 标签与知识条目
 

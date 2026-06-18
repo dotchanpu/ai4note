@@ -6,6 +6,7 @@ import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.mapper.ChapterRepository;
 import com.example.coursekb.mapper.MaterialFileRepository;
 import com.example.coursekb.mapper.MaterialRepository;
+import com.example.coursekb.mapper.TextChunkRepository;
 import com.example.coursekb.vo.MaterialVO;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,6 +36,7 @@ public class MaterialService {
     private final MaterialRepository materialRepository;
     private final MaterialFileRepository materialFileRepository;
     private final ChapterRepository chapterRepository;
+    private final TextChunkRepository textChunkRepository;
     private final CourseService courseService;
     private final Path storageRoot;
 
@@ -42,11 +44,13 @@ public class MaterialService {
             MaterialRepository materialRepository,
             MaterialFileRepository materialFileRepository,
             ChapterRepository chapterRepository,
+            TextChunkRepository textChunkRepository,
             CourseService courseService,
             @Value("${ai4note.storage-root}") String storageRoot) {
         this.materialRepository = materialRepository;
         this.materialFileRepository = materialFileRepository;
         this.chapterRepository = chapterRepository;
+        this.textChunkRepository = textChunkRepository;
         this.courseService = courseService;
         this.storageRoot = Paths.get(storageRoot).toAbsolutePath().normalize();
     }
@@ -111,7 +115,7 @@ public class MaterialService {
             materialFile.setFileType(extension);
             materialFile.setFileSize(file.getSize());
             materialFile = materialFileRepository.save(materialFile);
-            return MaterialVO.from(material, materialFile);
+            return MaterialVO.from(material, materialFile, 0);
         } catch (IOException exception) {
             LOGGER.error("Failed to save uploaded material to {}", targetPath, exception);
             deleteQuietly(targetPath);
@@ -143,7 +147,8 @@ public class MaterialService {
     private MaterialVO toVO(Material material) {
         return MaterialVO.from(
                 material,
-                materialFileRepository.findByMaterialId(material.getId()).orElse(null));
+                materialFileRepository.findByMaterialId(material.getId()).orElse(null),
+                textChunkRepository.countByMaterialId(material.getId()));
     }
 
     private void validateChapter(Long chapterId, Long courseId) {

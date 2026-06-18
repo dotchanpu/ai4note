@@ -10,3 +10,16 @@ export function uploadMaterial(data) {
     timeout: 60000
   })
 }
+
+export function parsePdf(materialId, userId) {
+  return request.post(`/materials/${materialId}/parse`, null, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
+export function listTextChunks(materialId, userId) {
+  return request.get(`/materials/${materialId}/text-chunks`, {
+    params: { userId }
+  })
+}
