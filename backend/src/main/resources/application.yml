@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: ai4note-backend
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ai4note}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${DB_USERNAME:root}

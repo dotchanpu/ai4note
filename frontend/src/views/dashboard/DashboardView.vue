@@ -95,7 +95,10 @@
               <h2>{{ selectedCourse.courseName }}</h2>
               <p>{{ selectedCourse.description || '暂未填写课程简介。' }}</p>
             </div>
-            <el-button type="primary" plain @click="chapterDialogVisible = true">添加章节</el-button>
+            <div class="title-actions">
+              <el-button @click="chapterDialogVisible = true">添加章节</el-button>
+              <el-button type="primary" @click="materialDialogVisible = true">上传资料</el-button>
+            </div>
           </div>
 
           <div class="chapter-section">
@@ -110,6 +113,36 @@
               <el-table-column prop="chapterNo" label="章节编号" width="160" />
               <el-table-column prop="chapterTitle" label="章节名称" />
               <el-table-column prop="sortOrder" label="排序" width="100" align="center" />
+            </el-table>
+          </div>
+
+          <div class="material-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">课程资料</p>
+                <strong>{{ materials.length }} 份资料</strong>
+              </div>
+            </div>
+
+            <el-table v-loading="materialLoading" :data="materials" empty-text="暂无资料">
+              <el-table-column prop="title" label="资料名称" min-width="180" />
+              <el-table-column prop="materialType" label="类型" width="120" />
+              <el-table-column label="文件" min-width="180">
+                <template #default="{ row }">
+                  {{ row.originalName }}
+                </template>
+              </el-table-column>
+              <el-table-column label="大小" width="110" align="right">
+                <template #default="{ row }">
+                  {{ formatFileSize(row.fileSize) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="重点" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.key" type="danger" effect="plain">重点</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
             </el-table>
           </div>
         </template>
@@ -159,6 +192,65 @@
       <el-button type="primary" :loading="chapterSaving" @click="saveChapter">添加</el-button>
     </template>
   </el-dialog>
+
+  <el-dialog v-model="materialDialogVisible" title="上传课程资料" width="540px">
+    <el-form label-position="top">
+      <el-form-item label="资料文件">
+        <el-upload
+          :auto-upload="false"
+          :limit="1"
+          accept=".pdf,.doc,.docx,.md,.txt"
+          :on-change="handleFileChange"
+          :on-remove="handleFileRemove"
+        >
+          <el-button>选择文件</el-button>
+          <template #tip>
+            <div class="upload-tip">支持 PDF、Word、Markdown、TXT，单个文件不超过 50MB。</div>
+          </template>
+        </el-upload>
+      </el-form-item>
+      <el-form-item label="资料标题">
+        <el-input v-model="materialForm.title" maxlength="255" />
+      </el-form-item>
+      <div class="form-grid">
+        <el-form-item label="资料类型">
+          <el-select v-model="materialForm.materialType" class="full-select">
+            <el-option label="课件" value="SLIDE" />
+            <el-option label="实验报告" value="LAB_REPORT" />
+            <el-option label="往年真题" value="EXAM" />
+            <el-option label="复习笔记" value="NOTE" />
+            <el-option label="代码样例" value="CODE" />
+            <el-option label="其他" value="OTHER" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="所属章节">
+          <el-select v-model="materialForm.chapterId" clearable class="full-select">
+            <el-option
+              v-for="chapter in chapters"
+              :key="chapter.id"
+              :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+              :value="chapter.id"
+            />
+          </el-select>
+        </el-form-item>
+      </div>
+      <div class="form-grid">
+        <el-form-item label="年份">
+          <el-input-number v-model="materialForm.year" :min="1900" :max="2100" />
+        </el-form-item>
+        <el-form-item label="重点资料">
+          <el-switch v-model="materialForm.isKey" />
+        </el-form-item>
+      </div>
+      <el-form-item label="摘要">
+        <el-input v-model="materialForm.summary" type="textarea" :rows="3" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="materialDialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="materialSaving" @click="saveMaterial">上传</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -166,19 +258,25 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { login, register } from '../../api/auth'
 import { createChapter, createCourse, listChapters, listCourses } from '../../api/course'
+import { listMaterials, uploadMaterial } from '../../api/material'
 
 const currentUser = ref(null)
 const authMode = ref('login')
 const authLoading = ref(false)
 const courseLoading = ref(false)
 const chapterLoading = ref(false)
+const materialLoading = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
+const materialSaving = ref(false)
 const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
+const materialDialogVisible = ref(false)
 const courses = ref([])
 const chapters = ref([])
+const materials = ref([])
 const selectedCourse = ref(null)
+const selectedFile = ref(null)
 
 const authForm = reactive({
   username: '',
@@ -197,6 +295,15 @@ const chapterForm = reactive({
   chapterNo: '',
   chapterTitle: '',
   sortOrder: 0
+})
+
+const materialForm = reactive({
+  title: '',
+  materialType: 'SLIDE',
+  chapterId: null,
+  year: new Date().getFullYear(),
+  isKey: false,
+  summary: ''
 })
 
 onMounted(() => {
@@ -241,6 +348,7 @@ async function loadCourses() {
     } else {
       selectedCourse.value = null
       chapters.value = []
+      materials.value = []
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -252,12 +360,67 @@ async function loadCourses() {
 async function selectCourse(course) {
   selectedCourse.value = course
   chapterLoading.value = true
+  materialLoading.value = true
   try {
-    chapters.value = await listChapters(course.id, currentUser.value.id)
+    const [chapterData, materialData] = await Promise.all([
+      listChapters(course.id, currentUser.value.id),
+      listMaterials(course.id, currentUser.value.id)
+    ])
+    chapters.value = chapterData
+    materials.value = materialData
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     chapterLoading.value = false
+    materialLoading.value = false
+  }
+}
+
+function handleFileChange(uploadFile) {
+  selectedFile.value = uploadFile.raw
+  if (!materialForm.title && uploadFile.name) {
+    materialForm.title = uploadFile.name.replace(/\.[^.]+$/, '')
+  }
+}
+
+function handleFileRemove() {
+  selectedFile.value = null
+}
+
+async function saveMaterial() {
+  if (!selectedFile.value) {
+    ElMessage.warning('请选择资料文件')
+    return
+  }
+  if (!materialForm.title.trim()) {
+    ElMessage.warning('请输入资料标题')
+    return
+  }
+
+  materialSaving.value = true
+  try {
+    const data = new FormData()
+    data.append('userId', currentUser.value.id)
+    data.append('courseId', selectedCourse.value.id)
+    data.append('title', materialForm.title.trim())
+    data.append('materialType', materialForm.materialType)
+    data.append('year', materialForm.year)
+    data.append('isKey', materialForm.isKey)
+    data.append('summary', materialForm.summary.trim())
+    data.append('file', selectedFile.value)
+    if (materialForm.chapterId) {
+      data.append('chapterId', materialForm.chapterId)
+    }
+
+    const material = await uploadMaterial(data)
+    materials.value.unshift(material)
+    resetMaterialForm()
+    materialDialogVisible.value = false
+    ElMessage.success('资料上传成功')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    materialSaving.value = false
   }
 }
 
@@ -318,6 +481,7 @@ function logout() {
   currentUser.value = null
   courses.value = []
   chapters.value = []
+  materials.value = []
   selectedCourse.value = null
 }
 
@@ -332,6 +496,23 @@ function resetChapterForm() {
   chapterForm.chapterNo = ''
   chapterForm.chapterTitle = ''
   chapterForm.sortOrder = 0
+}
+
+function resetMaterialForm() {
+  materialForm.title = ''
+  materialForm.materialType = 'SLIDE'
+  materialForm.chapterId = null
+  materialForm.year = new Date().getFullYear()
+  materialForm.isKey = false
+  materialForm.summary = ''
+  selectedFile.value = null
+}
+
+function formatFileSize(size) {
+  if (!size) return '0 B'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 </script>
 
@@ -526,12 +707,34 @@ function resetChapterForm() {
   color: #66717a;
 }
 
-.chapter-section {
+.chapter-section,
+.material-section {
   margin-top: 28px;
 }
 
-.chapter-section .section-heading {
+.chapter-section .section-heading,
+.material-section .section-heading {
   margin-bottom: 16px;
+}
+
+.material-section {
+  padding-top: 28px;
+  border-top: 1px solid #dce1e4;
+}
+
+.title-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.full-select {
+  width: 100%;
+}
+
+.upload-tip {
+  margin-top: 7px;
+  color: #7b858c;
+  font-size: 12px;
 }
 
 .form-grid {
