@@ -312,82 +312,141 @@
 
   <el-dialog
     v-model="courseDialogVisible"
-    :title="editingCourseId ? '修改课程信息' : '新建课程'"
-    width="480px"
+    class="studio-dialog studio-dialog-course"
+    modal-class="studio-dialog-overlay"
+    width="560px"
+    :show-close="false"
     @closed="resetCourseForm"
   >
-    <el-form label-position="top">
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>course / 课程</p>
+          <h2>{{ editingCourseId ? '修改课程信息' : '创建一门新课程' }}<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="courseDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <el-form class="studio-form" label-position="top">
       <el-form-item label="课程名称">
-        <el-input v-model="courseForm.courseName" maxlength="128" />
+        <el-input v-model="courseForm.courseName" maxlength="128" placeholder="例如：编译原理" />
       </el-form-item>
       <div class="form-grid">
         <el-form-item label="课程编号">
-          <el-input v-model="courseForm.courseCode" maxlength="64" />
+          <el-input v-model="courseForm.courseCode" maxlength="64" placeholder="COMPILER" />
         </el-form-item>
         <el-form-item label="学期">
-          <el-input v-model="courseForm.semester" maxlength="64" />
+          <el-input v-model="courseForm.semester" maxlength="64" placeholder="2026 春" />
         </el-form-item>
       </div>
       <el-form-item label="课程简介">
-        <el-input v-model="courseForm.description" type="textarea" :rows="4" />
+        <el-input
+          v-model="courseForm.description"
+          type="textarea"
+          :rows="4"
+          placeholder="用一句话说明这门课程的学习目标。"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="courseDialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="courseSaving" @click="saveCourse">
-        {{ editingCourseId ? '保存修改' : '创建' }}
-      </el-button>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-ghost" @click="courseDialogVisible = false">
+          取消
+        </button>
+        <button type="button" class="dialog-button dialog-button-primary" :disabled="courseSaving" @click="saveCourse">
+          <span>{{ courseSaving ? '保存中…' : editingCourseId ? '保存修改' : '创建课程' }}</span>
+          <strong>→</strong>
+        </button>
+      </div>
     </template>
   </el-dialog>
 
   <el-dialog
     v-model="chapterDialogVisible"
-    :title="editingChapterId ? '修改章节信息' : '添加章节'"
-    width="440px"
+    class="studio-dialog studio-dialog-chapter"
+    modal-class="studio-dialog-overlay"
+    width="520px"
+    :show-close="false"
     @closed="resetChapterForm"
   >
-    <el-form label-position="top">
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>chapter / 章节</p>
+          <h2>{{ editingChapterId ? '修改章节信息' : '添加学习章节' }}<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="chapterDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <el-form class="studio-form" label-position="top">
       <el-form-item label="章节编号">
         <el-input v-model="chapterForm.chapterNo" placeholder="例如：第1章" maxlength="64" />
       </el-form-item>
       <el-form-item label="章节名称">
-        <el-input v-model="chapterForm.chapterTitle" maxlength="128" />
+        <el-input v-model="chapterForm.chapterTitle" maxlength="128" placeholder="例如：编译系统概述" />
       </el-form-item>
       <el-form-item label="排序">
-        <el-input-number v-model="chapterForm.sortOrder" :min="0" :max="999" />
+        <el-input-number v-model="chapterForm.sortOrder" :min="0" :max="999" class="full-number-input" />
+        <p class="field-hint">数字越小，章节位置越靠前。</p>
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="chapterDialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="chapterSaving" @click="saveChapter">
-        {{ editingChapterId ? '保存修改' : '添加' }}
-      </el-button>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-ghost" @click="chapterDialogVisible = false">
+          取消
+        </button>
+        <button type="button" class="dialog-button dialog-button-primary" :disabled="chapterSaving" @click="saveChapter">
+          <span>{{ chapterSaving ? '保存中…' : editingChapterId ? '保存修改' : '添加章节' }}</span>
+          <strong>→</strong>
+        </button>
+      </div>
     </template>
   </el-dialog>
 
   <el-dialog
     v-model="materialDialogVisible"
-    :title="editingMaterialId ? '修改资料信息' : '上传课程资料'"
-    width="540px"
+    class="studio-dialog studio-dialog-material"
+    modal-class="studio-dialog-overlay"
+    width="680px"
+    :show-close="false"
     @closed="resetMaterialForm"
   >
-    <el-form label-position="top">
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>material / 资料</p>
+          <h2>{{ editingMaterialId ? '修改资料信息' : '放入一份新资料' }}<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="materialDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <el-form class="studio-form" label-position="top">
       <el-form-item v-if="!editingMaterialId" label="资料文件">
         <el-upload
+          class="studio-upload"
+          drag
           :auto-upload="false"
           :limit="1"
           accept=".pdf,.doc,.docx,.md,.txt"
           :on-change="handleFileChange"
           :on-remove="handleFileRemove"
         >
-          <el-button>选择文件</el-button>
+          <div class="upload-symbol">＋</div>
+          <strong>拖入文件，或点击选择</strong>
+          <p>PDF · Word · Markdown · TXT</p>
           <template #tip>
             <div class="upload-tip">支持 PDF、Word、Markdown、TXT，单个文件不超过 50MB。</div>
           </template>
         </el-upload>
       </el-form-item>
       <el-form-item label="资料标题">
-        <el-input v-model="materialForm.title" maxlength="255" />
+        <el-input v-model="materialForm.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
       </el-form-item>
       <div class="form-grid">
         <el-form-item label="资料类型">
@@ -420,14 +479,24 @@
         </el-form-item>
       </div>
       <el-form-item label="摘要">
-        <el-input v-model="materialForm.summary" type="textarea" :rows="3" />
+        <el-input
+          v-model="materialForm.summary"
+          type="textarea"
+          :rows="3"
+          placeholder="简单描述资料内容、用途或重点。"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="materialDialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="materialSaving" @click="saveMaterial">
-        {{ editingMaterialId ? '保存修改' : '上传' }}
-      </el-button>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-ghost" @click="materialDialogVisible = false">
+          取消
+        </button>
+        <button type="button" class="dialog-button dialog-button-primary" :disabled="materialSaving" @click="saveMaterial">
+          <span>{{ materialSaving ? '保存中…' : editingMaterialId ? '保存修改' : '上传资料' }}</span>
+          <strong>→</strong>
+        </button>
+      </div>
     </template>
   </el-dialog>
 
@@ -2096,16 +2165,282 @@ button {
   box-shadow: inset 0 -3px 0 #ff3151;
 }
 
-:deep(.el-dialog) {
-  border: 1px solid #111;
-  border-radius: 0;
-  box-shadow: 14px 14px 0 #0de0c0;
+:global(.studio-dialog-overlay) {
+  background: rgba(10, 10, 10, 0.56);
+  backdrop-filter: blur(9px);
 }
 
-:deep(.el-dialog__title) {
-  font-size: 28px;
+:global(.studio-dialog) {
+  --dialog-accent: #0de0c0;
+  max-width: calc(100vw - 36px);
+  margin-top: 7vh !important;
+  overflow: hidden;
+  border: 2px solid #111;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: 16px 16px 0 var(--dialog-accent);
+}
+
+:global(.studio-dialog-course) {
+  --dialog-accent: #ffb21c;
+}
+
+:global(.studio-dialog-chapter) {
+  --dialog-accent: #0de0c0;
+}
+
+:global(.studio-dialog-material) {
+  --dialog-accent: #14cbea;
+}
+
+:global(.studio-dialog .el-dialog__header) {
+  position: relative;
+  margin: 0;
+  padding: 28px 30px 24px;
+  border-bottom: 2px solid #111;
+}
+
+:global(.studio-dialog .el-dialog__header::after) {
+  content: "";
+  position: absolute;
+  right: 82px;
+  bottom: -18px;
+  width: 36px;
+  height: 36px;
+  border: 2px solid #111;
+  border-radius: 50%;
+  background: var(--dialog-accent);
+}
+
+:global(.studio-dialog .el-dialog__body) {
+  padding: 30px;
+}
+
+:global(.studio-dialog .el-dialog__footer) {
+  padding: 0 30px 30px;
+}
+
+.dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.dialog-heading p {
+  margin: 0 0 9px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dialog-heading h2 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 46px);
+  font-weight: 850;
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+}
+
+.dialog-heading h2 span {
+  color: #ff3151;
+}
+
+.dialog-close {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0 0 4px;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 29px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.25s, background 0.25s, color 0.25s;
+}
+
+.dialog-close:hover {
+  background: #111;
+  color: #fff;
+  transform: rotate(90deg);
+}
+
+:global(.studio-dialog .studio-form .el-form-item) {
+  margin-bottom: 22px;
+}
+
+:global(.studio-dialog .studio-form .el-form-item__label) {
+  padding-bottom: 8px;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+:global(.studio-dialog .el-input__wrapper),
+:global(.studio-dialog .el-select__wrapper),
+:global(.studio-dialog .el-textarea__inner),
+:global(.studio-dialog .el-input-number .el-input__wrapper) {
+  min-height: 48px;
+  border: 1px solid #111;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+
+:global(.studio-dialog .el-textarea__inner) {
+  padding: 13px 15px;
+  line-height: 1.65;
+}
+
+:global(.studio-dialog .el-input__wrapper.is-focus),
+:global(.studio-dialog .el-select__wrapper.is-focused),
+:global(.studio-dialog .el-textarea__inner:focus),
+:global(.studio-dialog .el-input-number .el-input__wrapper.is-focus) {
+  background: #fffef8;
+  box-shadow: inset 0 -4px 0 var(--dialog-accent);
+}
+
+:global(.studio-dialog .el-input-number) {
+  width: 100%;
+}
+
+:global(.studio-dialog .el-input-number__decrease),
+:global(.studio-dialog .el-input-number__increase) {
+  width: 44px;
+  border-color: #111;
+  background: #f4f2ee;
+  color: #111;
+}
+
+:global(.studio-dialog .el-switch) {
+  --el-switch-on-color: var(--dialog-accent);
+  --el-switch-off-color: #d8d5cf;
+  height: 48px;
+}
+
+:global(.studio-dialog .el-switch__core) {
+  border: 1px solid #111;
+}
+
+.field-hint {
+  width: 100%;
+  margin: 7px 0 0;
+  color: #777;
+  font-size: 11px;
+}
+
+.studio-upload {
+  width: 100%;
+}
+
+:global(.studio-dialog .studio-upload .el-upload) {
+  width: 100%;
+}
+
+:global(.studio-dialog .studio-upload .el-upload-dragger) {
+  width: 100%;
+  min-height: 168px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 24px;
+  border: 1px dashed #111;
+  border-radius: 0;
+  background:
+    linear-gradient(135deg, transparent 0 72%, color-mix(in srgb, var(--dialog-accent) 28%, transparent) 72%),
+    #faf9f6;
+  transition: background 0.2s, transform 0.2s;
+}
+
+:global(.studio-dialog .studio-upload .el-upload-dragger:hover) {
+  border-color: #111;
+  background:
+    linear-gradient(135deg, transparent 0 65%, color-mix(in srgb, var(--dialog-accent) 45%, transparent) 65%),
+    #fff;
+  transform: translateY(-2px);
+}
+
+.upload-symbol {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 13px;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: var(--dialog-accent);
+  color: #111;
+  font-size: 25px;
+}
+
+.studio-upload strong {
+  font-size: 16px;
+}
+
+.studio-upload p {
+  margin: 7px 0 0;
+  color: #777;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: 0.11em;
+}
+
+:global(.studio-dialog .el-upload-list__item) {
+  border: 1px solid #111;
+  border-radius: 0;
+  background: #fff;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 22px;
+  border-top: 1px solid #111;
+}
+
+.dialog-button {
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.dialog-button:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #111;
+}
+
+.dialog-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.dialog-button-ghost {
+  background: #fff;
+}
+
+.dialog-button-primary {
+  min-width: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: var(--dialog-accent);
+}
+
+.dialog-button-primary strong {
+  font-size: 20px;
 }
 
 :deep(.el-button--primary) {
@@ -2150,6 +2485,46 @@ button {
 }
 
 @media (max-width: 760px) {
+  :global(.studio-dialog) {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 34px);
+    margin: 17px auto !important;
+    overflow-y: auto;
+    box-shadow: 8px 8px 0 var(--dialog-accent);
+  }
+
+  :global(.studio-dialog .el-dialog__header) {
+    padding: 23px 20px 20px;
+  }
+
+  :global(.studio-dialog .el-dialog__header::after) {
+    right: 66px;
+    width: 28px;
+    height: 28px;
+  }
+
+  :global(.studio-dialog .el-dialog__body) {
+    padding: 24px 20px;
+  }
+
+  :global(.studio-dialog .el-dialog__footer) {
+    padding: 0 20px 22px;
+  }
+
+  .dialog-heading h2 {
+    font-size: 31px;
+  }
+
+  .dialog-footer {
+    display: grid;
+    grid-template-columns: 0.7fr 1.3fr;
+  }
+
+  .dialog-button {
+    width: 100%;
+    padding: 0 16px;
+  }
+
   .auth-header {
     height: 76px;
     padding: 18px 20px;
