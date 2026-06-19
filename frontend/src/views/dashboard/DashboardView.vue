@@ -156,6 +156,9 @@
                 <button type="button" class="outline-pill" @click="openCourseEditor">
                   修改课程 ↗
                 </button>
+                <button type="button" class="outline-pill danger-pill" @click="confirmCourseDeletion">
+                  删除课程
+                </button>
               </div>
             </div>
             <div class="hero-stats">
@@ -194,7 +197,12 @@
                   <p>{{ chapter.chapterNo }}</p>
                   <h3>{{ chapter.chapterTitle }}</h3>
                 </div>
-                <button type="button" @click="openChapterEditor(chapter)">edit ↗</button>
+                <div class="chapter-card-actions">
+                  <button type="button" @click="openChapterEditor(chapter)">edit ↗</button>
+                  <button type="button" class="danger-text" @click="confirmChapterDeletion(chapter)">
+                    delete
+                  </button>
+                </div>
               </article>
               <div v-if="!chapterLoading && chapters.length === 0" class="dark-empty">
                 添加章节，搭建这门课程的学习路线。
@@ -282,6 +290,9 @@
                       >
                         查看文本 ↗
                       </button>
+                      <button type="button" class="danger-text" @click="confirmMaterialDeletion(material)">
+                        删除资料
+                      </button>
                     </div>
                   </article>
                 </div>
@@ -352,6 +363,15 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
+        <button
+          v-if="editingCourseId"
+          type="button"
+          class="dialog-button dialog-button-danger"
+          :disabled="courseSaving"
+          @click="confirmCourseDeletion"
+        >
+          删除课程
+        </button>
         <button type="button" class="dialog-button dialog-button-ghost" @click="courseDialogVisible = false">
           取消
         </button>
@@ -396,6 +416,15 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
+        <button
+          v-if="editingChapterId"
+          type="button"
+          class="dialog-button dialog-button-danger"
+          :disabled="chapterSaving"
+          @click="confirmChapterDeletion"
+        >
+          删除章节
+        </button>
         <button type="button" class="dialog-button dialog-button-ghost" @click="chapterDialogVisible = false">
           取消
         </button>
@@ -429,6 +458,7 @@
     <el-form class="studio-form" label-position="top">
       <el-form-item v-if="!editingMaterialId" label="资料文件">
         <el-upload
+          ref="materialUploadRef"
           class="studio-upload"
           drag
           :auto-upload="false"
@@ -489,6 +519,15 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
+        <button
+          v-if="editingMaterialId"
+          type="button"
+          class="dialog-button dialog-button-danger"
+          :disabled="materialSaving"
+          @click="confirmMaterialDeletion"
+        >
+          删除资料
+        </button>
         <button type="button" class="dialog-button dialog-button-ghost" @click="materialDialogVisible = false">
           取消
         </button>
@@ -502,19 +541,88 @@
 
   <el-dialog
     v-model="textPreviewVisible"
-    :title="`${previewMaterial?.title || ''} - 解析文本`"
-    width="760px"
+    class="studio-dialog studio-dialog-text"
+    modal-class="studio-dialog-overlay"
+    width="880px"
+    :show-close="false"
   >
-    <div v-loading="textChunkLoading" class="text-preview">
-      <section v-for="chunk in textChunks" :key="chunk.id" class="text-page">
-        <div class="text-page-heading">
-          <strong>第 {{ chunk.pageNo }} 页</strong>
-          <span>{{ chunk.wordCount }} 字符</span>
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>parsed text / 解析文本</p>
+          <h2>{{ previewMaterial?.title || '资料文本' }}<span>.</span></h2>
         </div>
-        <pre>{{ chunk.content }}</pre>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="textPreviewVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <div v-loading="textChunkLoading" class="text-preview">
+      <section v-for="(chunk, index) in textChunks" :key="chunk.id" class="text-page">
+        <div class="text-page-marker">
+          <span>{{ String(index + 1).padStart(2, '0') }}</span>
+        </div>
+        <div class="text-page-content">
+          <div class="text-page-heading">
+            <strong>第 {{ chunk.pageNo || index + 1 }} 页</strong>
+            <span>{{ chunk.wordCount || chunk.content?.length || 0 }} 字符</span>
+          </div>
+          <div class="text-page-body">{{ chunk.content }}</div>
+        </div>
       </section>
       <el-empty v-if="!textChunkLoading && textChunks.length === 0" description="暂无解析文本" />
     </div>
+    <template #footer>
+      <div class="dialog-footer text-dialog-footer">
+        <span>共 {{ textChunks.length }} 个文本块</span>
+        <button type="button" class="dialog-button dialog-button-primary" @click="textPreviewVisible = false">
+          <span>阅读完成</span>
+          <strong>→</strong>
+        </button>
+      </div>
+    </template>
+  </el-dialog>
+
+  <el-dialog
+    v-model="deleteDialogVisible"
+    class="studio-dialog studio-dialog-delete"
+    modal-class="studio-dialog-overlay"
+    width="520px"
+    :show-close="false"
+    @closed="resetDeleteTarget"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>delete / 删除</p>
+          <h2>{{ deleteDialogTitle }}<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="deleteDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <div class="delete-dialog-copy">
+      <strong>{{ deleteTarget?.name }}</strong>
+      <p>{{ deleteDialogDescription }}</p>
+      <div class="delete-warning">此操作无法撤销，请确认后再继续。</div>
+    </div>
+    <template #footer>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-ghost" @click="deleteDialogVisible = false">
+          取消
+        </button>
+        <button
+          type="button"
+          class="dialog-button dialog-button-danger-confirm"
+          :disabled="deleteLoading"
+          @click="executeDeletion"
+        >
+          <span>{{ deleteLoading ? '删除中…' : '确认删除' }}</span>
+          <strong>×</strong>
+        </button>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
@@ -525,12 +633,15 @@ import { login, register } from '../../api/auth'
 import {
   createChapter,
   createCourse,
+  deleteChapter,
+  deleteCourse,
   listChapters,
   listCourses,
   updateChapter,
   updateCourse
 } from '../../api/course'
 import {
+  deleteMaterial,
   listMaterials,
   listTextChunks,
   parsePdf,
@@ -553,6 +664,9 @@ const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
 const materialDialogVisible = ref(false)
 const textPreviewVisible = ref(false)
+const deleteDialogVisible = ref(false)
+const deleteLoading = ref(false)
+const deleteTarget = ref(null)
 const editingCourseId = ref(null)
 const editingChapterId = ref(null)
 const editingMaterialId = ref(null)
@@ -561,6 +675,7 @@ const chapters = ref([])
 const materials = ref([])
 const selectedCourse = ref(null)
 const selectedFile = ref(null)
+const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
 const textChunks = ref([])
 const activeSection = ref('overview')
@@ -584,6 +699,22 @@ const materialGroups = computed(() => materialTypeOptions.map(group => ({
   ...group,
   items: materials.value.filter(material => material.materialType === group.type)
 })))
+
+const deleteDialogTitle = computed(() => {
+  if (deleteTarget.value?.type === 'course') return '删除这门课程'
+  if (deleteTarget.value?.type === 'chapter') return '删除这个章节'
+  return '删除这份资料'
+})
+
+const deleteDialogDescription = computed(() => {
+  if (deleteTarget.value?.type === 'course') {
+    return '课程内的章节、资料、解析文本和相关数据都会一并删除。'
+  }
+  if (deleteTarget.value?.type === 'chapter') {
+    return '章节会被删除，但其中的资料将保留并变为未关联章节。'
+  }
+  return '原始文件、解析文本和相关数据都会一并删除。'
+})
 
 const authForm = reactive({
   username: '',
@@ -861,6 +992,105 @@ async function saveChapter() {
   }
 }
 
+function confirmCourseDeletion() {
+  deleteTarget.value = {
+    type: 'course',
+    id: selectedCourse.value.id,
+    name: selectedCourse.value.courseName
+  }
+  deleteDialogVisible.value = true
+}
+
+function confirmChapterDeletion(chapter = null) {
+  const target = chapter || chapters.value.find(item => item.id === editingChapterId.value)
+  if (!target) return
+  deleteTarget.value = {
+    type: 'chapter',
+    id: target.id,
+    name: `${target.chapterNo} ${target.chapterTitle}`
+  }
+  deleteDialogVisible.value = true
+}
+
+function confirmMaterialDeletion(material = null) {
+  const target = material || materials.value.find(item => item.id === editingMaterialId.value)
+  if (!target) return
+  deleteTarget.value = {
+    type: 'material',
+    id: target.id,
+    name: target.title
+  }
+  deleteDialogVisible.value = true
+}
+
+async function executeDeletion() {
+  if (!deleteTarget.value) return
+  deleteLoading.value = true
+  try {
+    if (deleteTarget.value.type === 'course') {
+      await removeCourse(deleteTarget.value.id)
+    } else if (deleteTarget.value.type === 'chapter') {
+      await removeChapter(deleteTarget.value.id)
+    } else {
+      await removeMaterial(deleteTarget.value.id)
+    }
+  } finally {
+    deleteLoading.value = false
+  }
+}
+
+async function removeCourse(courseId) {
+  try {
+    await deleteCourse(courseId, currentUser.value.id)
+    courses.value = courses.value.filter(course => course.id !== courseId)
+    courseDialogVisible.value = false
+    deleteDialogVisible.value = false
+    if (courses.value.length > 0) {
+      await selectCourse(courses.value[0])
+    } else {
+      selectedCourse.value = null
+      chapters.value = []
+      materials.value = []
+    }
+    ElMessage.success('课程已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function removeChapter(chapterId) {
+  try {
+    await deleteChapter(selectedCourse.value.id, chapterId, currentUser.value.id)
+    chapters.value = chapters.value.filter(item => item.id !== chapterId)
+    materials.value.forEach(material => {
+      if (material.chapterId === chapterId) {
+        material.chapterId = null
+      }
+    })
+    chapterDialogVisible.value = false
+    deleteDialogVisible.value = false
+    ElMessage.success('章节已删除，相关资料已保留')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function removeMaterial(materialId) {
+  try {
+    await deleteMaterial(materialId, currentUser.value.id)
+    materials.value = materials.value.filter(item => item.id !== materialId)
+    materialDialogVisible.value = false
+    deleteDialogVisible.value = false
+    ElMessage.success('资料已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+function resetDeleteTarget() {
+  deleteTarget.value = null
+}
+
 function logout() {
   localStorage.removeItem('ai4note-user')
   currentUser.value = null
@@ -943,6 +1173,7 @@ function resetChapterForm() {
 }
 
 function resetMaterialForm() {
+  materialUploadRef.value?.clearFiles()
   editingMaterialId.value = null
   materialForm.title = ''
   materialForm.materialType = 'SLIDE'
@@ -1715,6 +1946,16 @@ button {
   cursor: pointer;
 }
 
+.chapter-card-actions {
+  align-self: flex-end;
+  display: flex;
+  gap: 16px;
+}
+
+.chapter-card-actions button {
+  align-self: auto;
+}
+
 .dark-empty {
   grid-column: 1 / -1;
   padding: 58px;
@@ -2022,6 +2263,10 @@ button {
   cursor: wait;
 }
 
+.danger-text {
+  color: #ff3151 !important;
+}
+
 .material-group-empty {
   width: 100%;
   min-height: 160px;
@@ -2110,35 +2355,80 @@ button {
 }
 
 .text-preview {
-  min-height: 180px;
-  max-height: 65vh;
+  min-height: 240px;
+  max-height: 62vh;
   overflow: auto;
+  padding: 4px 12px 4px 0;
+  scrollbar-color: #14cbea #eee;
+  scrollbar-width: thin;
 }
 
 .text-page {
-  padding: 16px 0 22px;
-  border-bottom: 1px solid #ddd;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 20px;
+  padding: 24px 0 30px;
+  border-bottom: 1px solid #111;
 }
 
 .text-page:first-child {
   padding-top: 0;
 }
 
-.text-page-heading {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  color: #666;
-  font-size: 13px;
+.text-page-marker span {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: #14cbea;
+  font-size: 12px;
+  font-weight: 900;
 }
 
-.text-page pre {
+.text-page-content {
+  min-width: 0;
+}
+
+.text-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ddd;
+  color: #555;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.text-page-heading strong {
+  color: #111;
+  font-size: 15px;
+}
+
+.text-page-body {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: Arial, "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  line-height: 1.75;
+  color: #202020;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.95;
+  letter-spacing: 0.015em;
+}
+
+.text-dialog-footer {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.text-dialog-footer > span {
+  color: #666;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .form-grid {
@@ -2191,6 +2481,18 @@ button {
 
 :global(.studio-dialog-material) {
   --dialog-accent: #14cbea;
+}
+
+:global(.studio-dialog-delete) {
+  --dialog-accent: #ff3151;
+}
+
+:global(.studio-dialog-text) {
+  --dialog-accent: #14cbea;
+}
+
+:global(.studio-dialog-text .el-dialog__body) {
+  background: #faf9f6;
 }
 
 :global(.studio-dialog .el-dialog__header) {
@@ -2428,6 +2730,59 @@ button {
 
 .dialog-button-ghost {
   background: #fff;
+}
+
+.dialog-button-danger {
+  margin-right: auto;
+  background: #ff3151;
+  color: #fff;
+}
+
+.dialog-button-danger-confirm {
+  min-width: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: #ff3151;
+  color: #fff;
+}
+
+.dialog-button-danger-confirm strong {
+  font-size: 22px;
+}
+
+.delete-dialog-copy strong {
+  display: block;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delete-dialog-copy p {
+  margin: 18px 0;
+  color: #555;
+  line-height: 1.7;
+}
+
+.delete-warning {
+  padding: 14px 16px;
+  border: 1px solid #111;
+  background: #fff0f3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.danger-pill {
+  border-color: #ff3151;
+  color: #ff3151;
+}
+
+.danger-pill:hover {
+  background: #ff3151;
+  color: #fff;
 }
 
 .dialog-button-primary {

@@ -17,6 +17,12 @@ export function updateMaterial(materialId, userId, data) {
   })
 }
 
+export function deleteMaterial(materialId, userId) {
+  return request.delete(`/materials/${materialId}`, {
+    params: { userId }
+  })
+}
+
 export function parsePdf(materialId, userId) {
   return request.post(`/materials/${materialId}/parse`, null, {
     params: { userId },

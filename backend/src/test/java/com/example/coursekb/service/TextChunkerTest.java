@@ -51,8 +51,9 @@ class TextChunkerTest {
     }
 
     private boolean hasSharedLine(String first, String second) {
-        for (String line : first.split("\\n")) {
-            if (!line.isEmpty() && second.contains(line)) {
+        String[] sentences = first.split("(?<=[。！？；.!?;])\\s*");
+        for (String sentence : sentences) {
+            if (!sentence.isEmpty() && second.contains(sentence)) {
                 return true;
             }
         }

@@ -12,6 +12,10 @@ export function updateCourse(courseId, data) {
   return request.put(`/courses/${courseId}`, data)
 }
 
+export function deleteCourse(courseId, userId) {
+  return request.delete(`/courses/${courseId}`, { params: { userId } })
+}
+
 export function listChapters(courseId, userId) {
   return request.get(`/courses/${courseId}/chapters`, { params: { userId } })
 }
@@ -22,6 +26,12 @@ export function createChapter(courseId, userId, data) {
 
 export function updateChapter(courseId, chapterId, userId, data) {
   return request.put(`/courses/${courseId}/chapters/${chapterId}`, data, {
+    params: { userId }
+  })
+}
+
+export function deleteChapter(courseId, chapterId, userId) {
+  return request.delete(`/courses/${courseId}/chapters/${chapterId}`, {
     params: { userId }
   })
 }
