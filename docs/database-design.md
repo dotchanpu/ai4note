@@ -22,6 +22,8 @@
 - `course` 1 对多 `review_generation_profile`
 - `review_generation_profile` 1 对多 `ai_generation_task`
 - `ai_provider_config` 1 对多 `ai_generation_task`
+- `user_account` 1 对多 `search_record`
+- `course` 1 对多 `search_record`
 
 ## 3NF 说明
 
@@ -35,6 +37,10 @@
 - 文件删除限定在配置的 `ai4note.storage-root` 内；规范化后的路径若越出存储根目录会被拒绝删除。
 
 当前删除级联主要由 `ContentDeletionService` 显式控制，而不是依赖数据库 `ON DELETE CASCADE`，便于同时协调数据库事务和文件系统清理。
+
+## 检索记录
+
+`search_record` 保存用户在课程内执行的资料检索，包括关键词、检索类型、结果数量和检索时间。当前检索类型使用 `MATERIAL_FULLTEXT`，搜索范围覆盖资料标题、摘要和 `text_chunk` 解析正文。
 
 ## 新增功能表
 

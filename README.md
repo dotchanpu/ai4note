@@ -12,6 +12,8 @@
 - 课程章节列表、章节创建、信息修改与删除；删除章节时保留资料并解除章节关联
 - 课程资料上传、连续上传、文件落盘、分类展示、详情修改与文件清理删除
 - PDF 按页提取、无意义换行清理、段落/句子感知分块、覆盖解析与清晰文本预览
+- 课程内资料标题、摘要和 PDF 正文检索，支持章节、资料类型和重点标记筛选
+- DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
 - 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
 - Vue 前端基础工作台
@@ -72,6 +74,8 @@ PowerShell 也可以使用：
 ```powershell
 Copy-Item .env.example .env
 ```
+
+后端会自动读取项目根目录的 `.env`。该文件已被 Git 忽略，适合保存本地数据库密码和 DeepSeek API Key。
 
 默认配置会创建 MySQL 数据库：
 
@@ -173,6 +177,9 @@ PUT  /api/materials/{materialId}?userId={userId}
 DELETE /api/materials/{materialId}?userId={userId}
 POST /api/materials/{materialId}/parse?userId={userId}
 GET  /api/materials/{materialId}/text-chunks?userId={userId}
+GET  /api/search?userId={userId}&courseId={courseId}&keyword={keyword}
+GET  /api/ai/status
+POST /api/ai/chat
 ```
 
 完整接口说明见 [`docs/api-doc.md`](docs/api-doc.md)。
@@ -302,6 +309,9 @@ DB_NAME
 DB_USERNAME
 DB_PASSWORD
 AI4NOTE_STORAGE_ROOT
+DEEPSEEK_API_KEY
+DEEPSEEK_BASE_URL
+DEEPSEEK_MODEL
 ```
 
 如果不设置环境变量，会使用 `.env.example` 中对应的默认值。

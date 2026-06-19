@@ -309,6 +309,100 @@
               </section>
             </div>
           </section>
+
+          <section
+            id="search"
+            class="search-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'search' }"
+          >
+            <div class="search-heading">
+              <div>
+                <p class="eyebrow">course search</p>
+                <h2>找到你记得的<br>那一小段<span>.</span></h2>
+              </div>
+              <p>检索资料标题、摘要和 PDF 解析正文，并按章节、类型和重点标记缩小范围。</p>
+            </div>
+
+            <div class="search-panel">
+              <div class="search-input-row">
+                <el-input
+                  v-model="searchForm.keyword"
+                  clearable
+                  maxlength="255"
+                  placeholder="输入知识点、题目关键词或资料名称"
+                  @keyup.enter="runSearch"
+                />
+                <button type="button" :disabled="searchLoading" @click="runSearch">
+                  <span>{{ searchLoading ? '检索中…' : '开始检索' }}</span>
+                  <strong>→</strong>
+                </button>
+              </div>
+              <div class="search-filters">
+                <el-select v-model="searchForm.chapterId" clearable placeholder="全部章节">
+                  <el-option
+                    v-for="chapter in chapters"
+                    :key="chapter.id"
+                    :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                    :value="chapter.id"
+                  />
+                </el-select>
+                <el-select v-model="searchForm.materialType" clearable placeholder="全部资料类型">
+                  <el-option
+                    v-for="option in materialTypeOptions"
+                    :key="option.type"
+                    :label="option.label"
+                    :value="option.type"
+                  />
+                </el-select>
+                <label class="search-key-filter">
+                  <el-switch v-model="searchForm.isKey" />
+                  <span>只看重点资料</span>
+                </label>
+                <button type="button" class="search-reset" @click="resetSearch">清空筛选</button>
+              </div>
+            </div>
+
+            <div class="search-result-heading">
+              <strong>{{ searchHasRun ? `${searchResults.length} 条结果` : '等待检索' }}</strong>
+              <span v-if="searchHasRun && searchForm.keyword">“{{ searchForm.keyword }}”</span>
+            </div>
+
+            <div v-loading="searchLoading" class="search-results">
+              <article v-for="(result, index) in searchResults" :key="result.materialId" class="search-result-card">
+                <div class="search-result-index">{{ String(index + 1).padStart(2, '0') }}</div>
+                <div class="search-result-content">
+                  <div class="search-result-meta">
+                    <span>{{ materialTypeLabel(result.materialType) }}</span>
+                    <span>{{ result.chapterTitle || '未关联章节' }}</span>
+                    <span v-if="result.matchedPageNo">第 {{ result.matchedPageNo }} 页</span>
+                    <span v-if="result.key">重点</span>
+                  </div>
+                  <h3>{{ result.title }}</h3>
+                  <p>{{ result.matchedSnippet || result.summary || '命中该资料' }}</p>
+                  <small>{{ matchSourceLabel(result.matchSource) }} · {{ result.originalName }}</small>
+                </div>
+                <div class="search-result-actions">
+                  <button type="button" @click="editSearchResult(result)">查看资料</button>
+                  <button
+                    v-if="result.parsedChunkCount > 0"
+                    type="button"
+                    @click="previewSearchResult(result)"
+                  >
+                    查看解析文本 ↗
+                  </button>
+                </div>
+              </article>
+
+              <div v-if="!searchLoading && searchHasRun && searchResults.length === 0" class="search-empty">
+                <strong>没有找到匹配内容。</strong>
+                <p>试试更短的关键词，或清空章节、类型和重点筛选。</p>
+              </div>
+              <div v-if="!searchLoading && !searchHasRun" class="search-empty">
+                <strong>输入一个关键词开始。</strong>
+                <p>例如“二叉树遍历”“实验报告”或“2024 期末”。</p>
+              </div>
+            </div>
+          </section>
         </template>
 
         <section v-else class="no-course">
@@ -648,6 +742,7 @@ import {
   updateMaterial,
   uploadMaterial
 } from '../../api/material'
+import { searchMaterials } from '../../api/search'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -655,6 +750,8 @@ const authLoading = ref(false)
 const courseLoading = ref(false)
 const chapterLoading = ref(false)
 const materialLoading = ref(false)
+const searchLoading = ref(false)
+const searchHasRun = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
@@ -673,6 +770,7 @@ const editingMaterialId = ref(null)
 const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
+const searchResults = ref([])
 const selectedCourse = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
@@ -683,7 +781,8 @@ const activeSection = ref('overview')
 const pageSections = [
   { id: 'overview', label: 'overview.', title: '课程概览' },
   { id: 'chapters', label: 'chapters.', title: '章节路径' },
-  { id: 'materials', label: 'materials.', title: '课程资料' }
+  { id: 'materials', label: 'materials.', title: '课程资料' },
+  { id: 'search', label: 'search.', title: '课程检索' }
 ]
 
 const materialTypeOptions = [
@@ -742,6 +841,13 @@ const materialForm = reactive({
   year: new Date().getFullYear(),
   isKey: false,
   summary: ''
+})
+
+const searchForm = reactive({
+  keyword: '',
+  chapterId: null,
+  materialType: null,
+  isKey: false
 })
 
 onMounted(() => {
@@ -804,6 +910,7 @@ async function loadCourses() {
 async function selectCourse(course) {
   selectedCourse.value = course
   activeSection.value = 'overview'
+  resetSearch()
   chapterLoading.value = true
   materialLoading.value = true
   try {
@@ -819,6 +926,73 @@ async function selectCourse(course) {
     chapterLoading.value = false
     materialLoading.value = false
   }
+}
+
+async function runSearch() {
+  if (!searchForm.keyword.trim()) {
+    ElMessage.warning('请输入检索关键词')
+    return
+  }
+  searchLoading.value = true
+  try {
+    searchResults.value = await searchMaterials({
+      userId: currentUser.value.id,
+      courseId: selectedCourse.value.id,
+      keyword: searchForm.keyword.trim(),
+      chapterId: searchForm.chapterId || undefined,
+      materialType: searchForm.materialType || undefined,
+      isKey: searchForm.isKey
+    })
+    searchHasRun.value = true
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+function resetSearch() {
+  searchForm.keyword = ''
+  searchForm.chapterId = null
+  searchForm.materialType = null
+  searchForm.isKey = false
+  searchResults.value = []
+  searchHasRun.value = false
+}
+
+function materialTypeLabel(type) {
+  return materialTypeOptions.find(option => option.type === type)?.label || type
+}
+
+function matchSourceLabel(source) {
+  if (source === 'TITLE') return '标题命中'
+  if (source === 'SUMMARY') return '摘要命中'
+  return '正文命中'
+}
+
+function searchResultMaterial(result) {
+  return materials.value.find(material => material.id === result.materialId) || {
+    id: result.materialId,
+    courseId: result.courseId,
+    chapterId: result.chapterId,
+    title: result.title,
+    materialType: result.materialType,
+    summary: result.summary,
+    year: result.year,
+    key: result.key,
+    originalName: result.originalName,
+    fileType: result.fileType,
+    fileSize: result.fileSize,
+    parsedChunkCount: result.parsedChunkCount
+  }
+}
+
+function editSearchResult(result) {
+  openMaterialEditor(searchResultMaterial(result))
+}
+
+function previewSearchResult(result) {
+  showParsedText(searchResultMaterial(result))
 }
 
 function handleFileChange(uploadFile) {
@@ -2316,6 +2490,253 @@ button {
   transform: translateY(0);
 }
 
+.search-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  background: #e9fbf7;
+}
+
+.search-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.search-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.search-heading h2 span {
+  color: #ff3151;
+}
+
+.search-heading > p {
+  margin: 0 0 5px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.search-panel {
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #14cbea;
+}
+
+.search-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 12px;
+}
+
+:deep(.search-input-row .el-input__wrapper),
+:deep(.search-filters .el-select__wrapper) {
+  min-height: 52px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:deep(.search-input-row .el-input__inner) {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.search-input-row > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.search-input-row > button strong {
+  font-size: 20px;
+}
+
+.search-input-row > button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.search-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.search-key-filter {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.search-reset {
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.search-reset:hover {
+  color: #ff3151;
+}
+
+.search-result-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 54px 0 18px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #111;
+}
+
+.search-result-heading strong {
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.search-result-heading span {
+  color: #666;
+  font-size: 12px;
+}
+
+.search-results {
+  min-height: 240px;
+  display: grid;
+  gap: 12px;
+}
+
+.search-result-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: start;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.search-result-card:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 7px 7px 0 #14cbea;
+}
+
+.search-result-index {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: #14cbea;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.search-result-content {
+  min-width: 0;
+}
+
+.search-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.search-result-meta span {
+  padding: 4px 8px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.search-result-content h3 {
+  margin: 15px 0 9px;
+  font-size: 25px;
+  letter-spacing: -0.045em;
+}
+
+.search-result-content p {
+  margin: 0;
+  color: #444;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.search-result-content small {
+  display: block;
+  margin-top: 13px;
+  overflow: hidden;
+  color: #777;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-actions {
+  min-width: 120px;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.search-result-actions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.search-result-actions button:hover {
+  color: #ff3151;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.search-empty {
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.search-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.search-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .no-course {
   position: relative;
   min-height: calc(100vh - 86px);
@@ -3026,7 +3447,8 @@ button {
   }
 
   .section-intro,
-  .material-title-row {
+  .material-title-row,
+  .search-heading {
     display: block;
   }
 
@@ -3046,6 +3468,25 @@ button {
 
   .material-title-row > p {
     margin-top: 24px;
+  }
+
+  .search-heading > p {
+    margin-top: 24px;
+  }
+
+  .search-input-row,
+  .search-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .search-result-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .search-result-actions {
+    grid-column: 2;
+    display: flex;
+    justify-items: start;
   }
 
   .material-groups {

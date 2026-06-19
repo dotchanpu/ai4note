@@ -528,7 +528,7 @@ OTHER
 
 ### 10.1 全文与条件检索
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/search`
 
@@ -543,7 +543,55 @@ OTHER
 | `materialType` | 否 | 资料类型筛选 |
 | `isKey` | 否 | 是否只检索重点资料 |
 
-搜索范围包括资料标题、摘要、标签和解析正文。
+搜索范围包括资料标题、摘要和 PDF 解析正文。当前检索限定在一个课程内，后端会校验课程是否属于当前用户。
+
+匹配规则：
+
+- 每份资料最多返回一条结果，最多返回 100 条。
+- 排序优先级为标题命中、摘要命中、正文命中，同级按资料上传时间倒序。
+- 正文命中会返回首个匹配文本块的 PDF 页码。
+- `matchedSnippet` 返回关键词附近最多约 220 个字符的上下文。
+- 每次成功检索都会写入 `search_record`，保存用户、课程、关键词、检索类型、结果数量和检索时间。
+
+请求示例：
+
+```text
+GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=false
+```
+
+响应示例：
+
+```json
+[
+  {
+    "materialId": 11,
+    "courseId": 4,
+    "chapterId": 2,
+    "chapterNo": "第1章",
+    "chapterTitle": "编译系统概述",
+    "title": "Chapter 1 Courseware",
+    "materialType": "SLIDE",
+    "summary": "编译原理课程第一章课件",
+    "year": 2026,
+    "key": true,
+    "originalName": "chapter1.pdf",
+    "fileType": "pdf",
+    "fileSize": 1258291,
+    "parsedChunkCount": 18,
+    "matchSource": "CONTENT",
+    "matchedPageNo": 3,
+    "matchedSnippet": "……编译程序通常由词法分析、语法分析和语义分析等阶段组成……"
+  }
+]
+```
+
+`matchSource` 可选值：
+
+| 值 | 含义 |
+|---|---|
+| `TITLE` | 资料标题命中 |
+| `SUMMARY` | 资料摘要命中 |
+| `CONTENT` | PDF 解析正文命中 |
 
 ## 11. 真题知识点映射
 
@@ -709,34 +757,70 @@ MANUAL_REVIEWED
 
 ## 14. AI 服务与任务
 
-### 14.1 查询 AI 服务配置
+### 14.1 查询 DeepSeek 配置状态
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
-- 路径：`/api/ai/providers`
+- 路径：`/api/ai/status`
 
-### 14.2 新建 AI 服务配置
+该接口不会返回 API Key，只返回是否已配置、基础地址、默认模型和支持的模型。
 
-- 状态：规划中
+响应示例：
+
+```json
+{
+  "provider": "DeepSeek",
+  "configured": true,
+  "baseUrl": "https://api.deepseek.com",
+  "defaultModel": "deepseek-v4-flash",
+  "supportedModels": [
+    "deepseek-v4-flash",
+    "deepseek-v4-pro"
+  ]
+}
+```
+
+### 14.2 课程 AI 对话
+
+- 状态：已实现
 - 方法：`POST`
-- 路径：`/api/ai/providers`
+- 路径：`/api/ai/chat`
 
 请求体示例：
 
 ```json
 {
   "userId": 1,
-  "providerName": "OpenAI Compatible",
-  "baseUrl": "https://example.com/v1",
-  "modelName": "example-model",
-  "apiKeyAlias": "AI4NOTE_API_KEY",
-  "enabled": true
+  "courseId": 1,
+  "message": "请解释 LL(1) 文法的判断方法",
+  "model": "deepseek-v4-flash",
+  "thinking": false,
+  "maxTokens": 2048
 }
 ```
 
-安全要求：数据库只保存 API Key 的环境变量别名，不保存明文密钥。
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 是 | 当前课程 ID，后端会校验课程归属 |
+| `message` | 是 | 用户问题，最长 12000 个字符 |
+| `model` | 否 | `deepseek-v4-flash` 或 `deepseek-v4-pro` |
+| `thinking` | 否 | 是否启用思考模式，默认 `false` |
+| `maxTokens` | 否 | 最大输出 token，范围 1 至 8192，默认 2048 |
 
-### 14.3 创建个性化复习配置
+响应包含 `content`、可选的 `reasoningContent`、停止原因和 token 用量。
+
+后端调用 DeepSeek OpenAI 兼容接口 `POST /chat/completions`。API Key 只从环境变量 `DEEPSEEK_API_KEY` 读取，不保存到数据库，也不会返回给前端。
+
+### 14.3 新建 AI 服务配置
+
+- 状态：规划中
+- 方法：`POST`
+- 路径：`/api/ai/providers`
+
+后续可将多供应商配置保存到 `ai_provider_config`。数据库只保存 API Key 的环境变量别名，不保存明文密钥。
+
+### 14.4 创建个性化复习配置
 
 - 状态：规划中
 - 方法：`POST`
@@ -758,7 +842,7 @@ MANUAL_REVIEWED
 }
 ```
 
-### 14.4 创建 AI 生成任务
+### 14.5 创建 AI 生成任务
 
 - 状态：规划中
 - 方法：`POST`
@@ -775,7 +859,7 @@ MOCK_EXAM_GENERATION
 KNOWLEDGE_PACKAGE_SUMMARY
 ```
 
-### 14.5 查询 AI 生成任务
+### 14.6 查询 AI 生成任务
 
 - 状态：规划中
 - 方法：`GET`
@@ -868,7 +952,7 @@ source/
 
 后续开发建议按以下顺序实现：
 
-1. 标签、知识条目和全文检索
+1. 标签与知识条目维护
 2. 课程前置关系
 3. 真题题目抽取与知识点映射
 4. 用户掌握状态与知识缺口检测

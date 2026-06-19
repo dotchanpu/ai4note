@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: optional:file:../.env[.properties]
   application:
     name: ai4note-backend
   servlet:
@@ -24,3 +26,8 @@ spring:
 
 ai4note:
   storage-root: ${AI4NOTE_STORAGE_ROOT:../storage}
+  ai:
+    deepseek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:}
+      default-model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
