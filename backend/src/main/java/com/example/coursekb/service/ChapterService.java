@@ -38,4 +38,21 @@ public class ChapterService {
         chapter.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
         return chapterRepository.save(chapter);
     }
+
+    @Transactional
+    public Chapter update(Long courseId, Long chapterId, Long userId, ChapterRequest request) {
+        courseService.getOwnedCourse(courseId, userId);
+        Chapter chapter = chapterRepository.findByIdAndCourseId(chapterId, courseId)
+                .orElseThrow(() -> new BusinessException("章节不存在"));
+        String chapterNo = request.getChapterNo().trim();
+        if (chapterRepository.existsByCourseIdAndChapterNoAndIdNot(
+                courseId, chapterNo, chapterId)) {
+            throw new BusinessException("当前课程中已存在相同章节编号");
+        }
+
+        chapter.setChapterNo(chapterNo);
+        chapter.setChapterTitle(request.getChapterTitle().trim());
+        chapter.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
+        return chapterRepository.save(chapter);
+    }
 }

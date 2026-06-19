@@ -8,10 +8,20 @@ export function createCourse(data) {
   return request.post('/courses', data)
 }
 
+export function updateCourse(courseId, data) {
+  return request.put(`/courses/${courseId}`, data)
+}
+
 export function listChapters(courseId, userId) {
   return request.get(`/courses/${courseId}/chapters`, { params: { userId } })
 }
 
 export function createChapter(courseId, userId, data) {
   return request.post(`/courses/${courseId}/chapters`, data, { params: { userId } })
+}
+
+export function updateChapter(courseId, chapterId, userId, data) {
+  return request.put(`/courses/${courseId}/chapters/${chapterId}`, data, {
+    params: { userId }
+  })
 }

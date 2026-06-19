@@ -1,5 +1,6 @@
 package com.example.coursekb.service;
 
+import com.example.coursekb.dto.MaterialUpdateRequest;
 import com.example.coursekb.entity.Material;
 import com.example.coursekb.entity.MaterialFile;
 import com.example.coursekb.exception.BusinessException;
@@ -124,6 +125,20 @@ public class MaterialService {
             deleteQuietly(targetPath);
             throw exception;
         }
+    }
+
+    @Transactional
+    public MaterialVO update(Long materialId, Long userId, MaterialUpdateRequest request) {
+        Material material = getOwnedMaterial(materialId, userId);
+        validateChapter(request.getChapterId(), material.getCourseId());
+        material.setChapterId(request.getChapterId());
+        material.setTitle(requireText(request.getTitle(), "资料标题不能为空"));
+        material.setMaterialType(requireText(request.getMaterialType(), "资料类型不能为空")
+                .toUpperCase(Locale.ROOT));
+        material.setYear(request.getYear());
+        material.setKey(request.getKey());
+        material.setSummary(normalize(request.getSummary()));
+        return toVO(materialRepository.save(material));
     }
 
     public Material getOwnedMaterial(Long materialId, Long userId) {

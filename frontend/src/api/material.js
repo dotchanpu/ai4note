@@ -11,6 +11,12 @@ export function uploadMaterial(data) {
   })
 }
 
+export function updateMaterial(materialId, userId, data) {
+  return request.put(`/materials/${materialId}`, data, {
+    params: { userId }
+  })
+}
+
 export function parsePdf(materialId, userId) {
   return request.post(`/materials/${materialId}/parse`, null, {
     params: { userId },

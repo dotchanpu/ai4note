@@ -10,5 +10,7 @@ public interface ChapterRepository extends JpaRepository<Chapter, Long> {
 
     boolean existsByCourseIdAndChapterNo(Long courseId, String chapterNo);
 
+    boolean existsByCourseIdAndChapterNoAndIdNot(Long courseId, String chapterNo, Long id);
+
     Optional<Chapter> findByIdAndCourseId(Long id, Long courseId);
 }

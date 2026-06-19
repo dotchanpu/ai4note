@@ -44,6 +44,16 @@ public class CourseService {
         return courseRepository.save(course);
     }
 
+    @Transactional
+    public Course update(Long courseId, CourseRequest request) {
+        Course course = getOwnedCourse(courseId, request.getUserId());
+        course.setCourseName(request.getCourseName().trim());
+        course.setCourseCode(normalize(request.getCourseCode()));
+        course.setSemester(normalize(request.getSemester()));
+        course.setDescription(normalize(request.getDescription()));
+        return courseRepository.save(course);
+    }
+
     private void ensureUserExists(Long userId) {
         if (!userAccountRepository.existsById(userId)) {
             throw new BusinessException("用户不存在");

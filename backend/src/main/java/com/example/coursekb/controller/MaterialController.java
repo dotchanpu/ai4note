@@ -1,5 +1,6 @@
 package com.example.coursekb.controller;
 
+import com.example.coursekb.dto.MaterialUpdateRequest;
 import com.example.coursekb.service.MaterialService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
@@ -9,6 +10,8 @@ import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,6 +63,14 @@ public class MaterialController {
                 isKey,
                 summary,
                 file);
+    }
+
+    @PutMapping("/materials/{materialId}")
+    public MaterialVO update(
+            @PathVariable Long materialId,
+            @RequestParam Long userId,
+            @javax.validation.Valid @RequestBody MaterialUpdateRequest request) {
+        return materialService.update(materialId, userId, request);
     }
 
     @PostMapping("/materials/{materialId}/parse")
