@@ -101,10 +101,78 @@ public class PdfParseService {
         if (value == null) {
             return "";
         }
-        return value.replace("\u0000", "")
-                .replaceAll("[\\t\\x0B\\f\\r ]+", " ")
+        String cleaned = value.replace("\u0000", "")
+                .replace('\uF06E', '\u2028')
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .replaceAll("[\\t\\x0B\\f ]+", " ")
                 .replaceAll(" *\\n *", "\n")
                 .trim();
+
+        String[] paragraphs = cleaned.split("\\n\\s*\\n+");
+        StringBuilder normalized = new StringBuilder();
+        for (String paragraph : paragraphs) {
+            String merged = mergeWrappedLines(paragraph);
+            if (merged.isEmpty()) {
+                continue;
+            }
+            if (normalized.length() > 0) {
+                normalized.append("\n\n");
+            }
+            normalized.append(merged);
+        }
+        return normalized.toString().replace('\u2028', '\n');
+    }
+
+    private String mergeWrappedLines(String paragraph) {
+        String[] lines = paragraph.split("\\n+");
+        StringBuilder result = new StringBuilder();
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (result.length() == 0) {
+                result.append(line);
+                continue;
+            }
+
+            if (isListItem(line)) {
+                result.append('\n').append(line);
+            } else if (endsWithLatinHyphen(result) && startsWithLatinLetter(line)) {
+                result.setLength(result.length() - 1);
+                result.append(line);
+            } else if (needsSpace(result.charAt(result.length() - 1), line.charAt(0))) {
+                result.append(' ').append(line);
+            } else {
+                result.append(line);
+            }
+        }
+        return result.toString();
+    }
+
+    private boolean isListItem(String line) {
+        return line.matches("^(?:[-•●▪◦]|\\d+[.)、]|[（(]?[一二三四五六七八九十]+[）)、.])\\s*.*");
+    }
+
+    private boolean endsWithLatinHyphen(StringBuilder value) {
+        int length = value.length();
+        return length >= 2
+                && value.charAt(length - 1) == '-'
+                && isLatinLetter(value.charAt(length - 2));
+    }
+
+    private boolean startsWithLatinLetter(String value) {
+        return !value.isEmpty() && isLatinLetter(value.charAt(0));
+    }
+
+    private boolean needsSpace(char previous, char next) {
+        return (isLatinLetter(previous) || Character.isDigit(previous))
+                && (isLatinLetter(next) || Character.isDigit(next));
+    }
+
+    private boolean isLatinLetter(char value) {
+        return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z');
     }
 
     private int countContentUnits(String content) {

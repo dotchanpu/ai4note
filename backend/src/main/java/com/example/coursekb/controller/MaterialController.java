@@ -1,12 +1,14 @@
 package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.MaterialUpdateRequest;
+import com.example.coursekb.service.ContentDeletionService;
 import com.example.coursekb.service.MaterialService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
 import com.example.coursekb.vo.MaterialVO;
 import com.example.coursekb.vo.PdfParseResultVO;
 import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,10 +24,15 @@ import org.springframework.web.multipart.MultipartFile;
 public class MaterialController {
     private final MaterialService materialService;
     private final PdfParseService pdfParseService;
+    private final ContentDeletionService contentDeletionService;
 
-    public MaterialController(MaterialService materialService, PdfParseService pdfParseService) {
+    public MaterialController(
+            MaterialService materialService,
+            PdfParseService pdfParseService,
+            ContentDeletionService contentDeletionService) {
         this.materialService = materialService;
         this.pdfParseService = pdfParseService;
+        this.contentDeletionService = contentDeletionService;
     }
 
     @GetMapping("/courses/{courseId}/materials")
@@ -71,6 +78,13 @@ public class MaterialController {
             @RequestParam Long userId,
             @javax.validation.Valid @RequestBody MaterialUpdateRequest request) {
         return materialService.update(materialId, userId, request);
+    }
+
+    @DeleteMapping("/materials/{materialId}")
+    public void delete(
+            @PathVariable Long materialId,
+            @RequestParam Long userId) {
+        contentDeletionService.deleteMaterial(materialId, userId);
     }
 
     @PostMapping("/materials/{materialId}/parse")

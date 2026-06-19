@@ -114,7 +114,7 @@ public class TextChunker {
 
     private void appendUnit(StringBuilder current, String unit) {
         if (current.length() > 0) {
-            current.append('\n');
+            current.append(' ');
         }
         current.append(unit);
     }
