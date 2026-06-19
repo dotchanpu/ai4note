@@ -7,11 +7,12 @@
 ## 当前已实现
 
 - 用户注册与登录，密码使用 BCrypt 保存
-- 用户课程列表、课程创建与信息修改
+- 用户课程列表、课程创建、信息修改与级联删除
 - 课程详情展示
-- 课程章节列表、章节创建与信息修改
-- 课程资料上传、文件落盘、分类展示、详情与信息修改
-- PDF 按页提取与段落/句子感知分块、解析结果覆盖更新与文本预览
+- 课程章节列表、章节创建、信息修改与删除；删除章节时保留资料并解除章节关联
+- 课程资料上传、连续上传、文件落盘、分类展示、详情修改与文件清理删除
+- PDF 按页提取、无意义换行清理、段落/句子感知分块、覆盖解析与清晰文本预览
+- 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
 - Vue 前端基础工作台
 
@@ -160,9 +161,23 @@ POST /api/auth/login
 GET  /api/courses?userId={userId}
 GET  /api/courses/{courseId}?userId={userId}
 POST /api/courses
+PUT  /api/courses/{courseId}
+DELETE /api/courses/{courseId}?userId={userId}
 GET  /api/courses/{courseId}/chapters?userId={userId}
 POST /api/courses/{courseId}/chapters?userId={userId}
+PUT  /api/courses/{courseId}/chapters/{chapterId}?userId={userId}
+DELETE /api/courses/{courseId}/chapters/{chapterId}?userId={userId}
+GET  /api/courses/{courseId}/materials?userId={userId}
+POST /api/materials
+PUT  /api/materials/{materialId}?userId={userId}
+DELETE /api/materials/{materialId}?userId={userId}
+POST /api/materials/{materialId}/parse?userId={userId}
+GET  /api/materials/{materialId}/text-chunks?userId={userId}
 ```
+
+完整接口说明见 [`docs/api-doc.md`](docs/api-doc.md)。
+
+PDF 重新解析会覆盖旧文本块。解析过程会合并版面硬换行，并将特殊项目符号 `` 识别为强制换行。
 
 ### 4. 启动前端
 
@@ -231,6 +246,13 @@ npm run dev
 ```bash
 cd frontend
 npm run build
+```
+
+运行后端测试：
+
+```bash
+cd backend
+mvn test
 ```
 
 ## 数据库脚本说明
