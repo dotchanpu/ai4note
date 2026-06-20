@@ -941,6 +941,114 @@
           </section>
 
           <section
+            id="review"
+            class="review-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'review' }"
+          >
+            <div class="review-heading">
+              <div>
+                <p class="eyebrow">复习配置</p>
+                <h2>定义生成目标<span>.</span></h2>
+              </div>
+              <p>保存考试目标、难度、输出类型、前置课程、教师画像和自定义要求，后续可直接用于复习资料生成。</p>
+            </div>
+
+            <div class="review-layout">
+              <form class="review-form" @submit.prevent="saveReviewProfile">
+                <label>
+                  <span>配置名称</span>
+                  <el-input v-model="reviewProfileForm.profileName" maxlength="128" />
+                </label>
+                <label>
+                  <span>考试目标</span>
+                  <el-input v-model="reviewProfileForm.target" maxlength="128" placeholder="例如：期末考试" />
+                </label>
+                <label>
+                  <span>复习难度</span>
+                  <el-select v-model="reviewProfileForm.difficultyLevel">
+                    <el-option
+                      v-for="option in reviewDifficultyOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>输出类型</span>
+                  <el-select v-model="reviewProfileForm.outputType">
+                    <el-option
+                      v-for="option in reviewOutputOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>教师画像</span>
+                  <el-select v-model="reviewProfileForm.teacherProfileId" clearable placeholder="不绑定画像">
+                    <el-option
+                      v-for="profile in teacherProfiles"
+                      :key="profile.id"
+                      :label="profile.teacherName"
+                      :value="profile.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="review-switch">
+                  <el-switch v-model="reviewProfileForm.includePrerequisites" />
+                  <span>包含前置课程</span>
+                </label>
+                <label class="review-wide">
+                  <span>自定义要求</span>
+                  <el-input
+                    v-model="reviewProfileForm.customRequirement"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="例如：重点覆盖树、图和排序，输出适合考前两天冲刺的版本"
+                  />
+                </label>
+                <div class="review-form-actions">
+                  <button v-if="editingReviewProfileId" type="button" @click="resetReviewProfileForm">
+                    取消编辑
+                  </button>
+                  <button type="submit" :disabled="reviewProfileSaving">
+                    {{ reviewProfileSaving ? '保存中…' : editingReviewProfileId ? '保存修改' : '创建配置' }}
+                  </button>
+                </div>
+              </form>
+
+              <div v-loading="reviewProfileLoading" class="review-profile-list">
+                <article v-for="profile in reviewProfiles" :key="profile.id" class="review-profile-card">
+                  <div class="review-card-top">
+                    <span>{{ reviewOutputLabel(profile.outputType) }}</span>
+                    <strong>{{ reviewDifficultyLabel(profile.difficultyLevel) }}</strong>
+                  </div>
+                  <h3>{{ profile.profileName }}</h3>
+                  <p>{{ profile.customRequirement || '暂无自定义要求' }}</p>
+                  <div class="review-card-meta">
+                    <span>{{ profile.target || '未设置目标' }}</span>
+                    <span>{{ profile.includePrerequisites ? '包含前置课程' : '仅当前课程' }}</span>
+                    <span>{{ profile.teacherName || '未绑定教师画像' }}</span>
+                  </div>
+                  <div class="review-card-actions">
+                    <button type="button" @click="editReviewProfile(profile)">编辑</button>
+                    <button type="button" @click="removeReviewProfile(profile)">删除</button>
+                  </div>
+                </article>
+                <div
+                  v-if="!reviewProfileLoading && reviewProfiles.length === 0"
+                  class="review-empty"
+                >
+                  <strong>还没有复习配置。</strong>
+                  <p>先创建一个目标，后续生成复习资料时可以复用。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="exam"
             class="exam-section scroll-panel"
             :class="{ 'section-active': activeSection === 'exam' }"
@@ -1433,6 +1541,12 @@ import {
   listTeacherProfiles,
   updateTeacherProfile
 } from '../../api/teacher'
+import {
+  createReviewProfile,
+  deleteReviewProfile,
+  listReviewProfiles,
+  updateReviewProfile
+} from '../../api/review'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -1454,6 +1568,8 @@ const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
 const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
+const reviewProfileLoading = ref(false)
+const reviewProfileSaving = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1482,6 +1598,7 @@ const gapReports = ref([])
 const gapItems = ref([])
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
+const reviewProfiles = ref([])
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
@@ -1491,6 +1608,7 @@ const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
 const selectedGapReport = ref(null)
 const selectedTeacherProfile = ref(null)
+const editingReviewProfileId = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
@@ -1507,6 +1625,7 @@ const pageSections = [
   { id: 'knowledge', label: '知识', title: '知识条目' },
   { id: 'gaps', label: '缺口', title: '知识缺口' },
   { id: 'teacher', label: '画像', title: '教师画像' },
+  { id: 'review', label: '复习', title: '复习配置' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
@@ -1544,6 +1663,21 @@ const masteryStatusOptions = [
   { status: 'MASTERED', label: '已掌握' },
   { status: 'WEAK', label: '薄弱' },
   { status: 'NEED_REVIEW', label: '待复习' }
+]
+
+const reviewDifficultyOptions = [
+  { value: 'EASY', label: '基础' },
+  { value: 'MEDIUM', label: '标准' },
+  { value: 'MEDIUM_HARD', label: '偏难' },
+  { value: 'HARD', label: '冲刺' }
+]
+
+const reviewOutputOptions = [
+  { value: 'REVIEW_NOTE', label: '复习笔记' },
+  { value: 'OUTLINE', label: '复习提纲' },
+  { value: 'FLASHCARDS', label: '记忆卡片' },
+  { value: 'MOCK_EXAM', label: '模拟题' },
+  { value: 'CHECKLIST', label: '检查清单' }
 ]
 
 const relationTypeOptions = [
@@ -1669,6 +1803,16 @@ const teacherEditForm = reactive({
   sourceSummary: ''
 })
 
+const reviewProfileForm = reactive({
+  profileName: '',
+  target: '',
+  difficultyLevel: 'MEDIUM',
+  outputType: 'REVIEW_NOTE',
+  includePrerequisites: true,
+  teacherProfileId: null,
+  customRequirement: ''
+})
+
 const exportForm = reactive({
   exportName: '',
   templateId: null,
@@ -1733,6 +1877,7 @@ async function loadCourses() {
       courseRelations.value = []
       clearGapState()
       clearTeacherProfileState()
+      clearReviewProfileState()
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1748,6 +1893,7 @@ async function selectCourse(course) {
   resetRelationForm()
   resetGapForm()
   resetTeacherProfileForm()
+  resetReviewProfileForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1769,7 +1915,8 @@ async function selectCourse(course) {
       loadCourseTags(),
       loadExportData(),
       loadGapReports(),
-      loadTeacherProfiles()
+      loadTeacherProfiles(),
+      loadReviewProfiles()
     ])
   } catch (error) {
     ElMessage.error(error.message)
@@ -1951,6 +2098,78 @@ async function selectTeacherProfile(profile) {
     ElMessage.error(error.message)
   } finally {
     teacherEvidenceLoading.value = false
+  }
+}
+
+async function loadReviewProfiles() {
+  if (!selectedCourse.value || !currentUser.value) return
+  reviewProfileLoading.value = true
+  try {
+    reviewProfiles.value = await listReviewProfiles(currentUser.value.id, selectedCourse.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    reviewProfileLoading.value = false
+  }
+}
+
+async function saveReviewProfile() {
+  if (!selectedCourse.value || !currentUser.value) return
+  if (!reviewProfileForm.profileName.trim()) {
+    ElMessage.warning('请输入配置名称')
+    return
+  }
+  reviewProfileSaving.value = true
+  try {
+    const payload = {
+      userId: currentUser.value.id,
+      courseId: selectedCourse.value.id,
+      teacherProfileId: reviewProfileForm.teacherProfileId,
+      profileName: reviewProfileForm.profileName.trim(),
+      target: reviewProfileForm.target.trim() || null,
+      difficultyLevel: reviewProfileForm.difficultyLevel,
+      outputType: reviewProfileForm.outputType,
+      includePrerequisites: reviewProfileForm.includePrerequisites,
+      customRequirement: reviewProfileForm.customRequirement.trim() || null
+    }
+    const saved = editingReviewProfileId.value
+      ? await updateReviewProfile(editingReviewProfileId.value, payload)
+      : await createReviewProfile(payload)
+    if (editingReviewProfileId.value) {
+      replaceItem(reviewProfiles.value, saved)
+    } else {
+      reviewProfiles.value.unshift(saved)
+    }
+    resetReviewProfileForm()
+    ElMessage.success('复习配置已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    reviewProfileSaving.value = false
+  }
+}
+
+function editReviewProfile(profile) {
+  editingReviewProfileId.value = profile.id
+  reviewProfileForm.profileName = profile.profileName || ''
+  reviewProfileForm.target = profile.target || ''
+  reviewProfileForm.difficultyLevel = profile.difficultyLevel || 'MEDIUM'
+  reviewProfileForm.outputType = profile.outputType || 'REVIEW_NOTE'
+  reviewProfileForm.includePrerequisites = profile.includePrerequisites !== false
+  reviewProfileForm.teacherProfileId = profile.teacherProfileId || null
+  reviewProfileForm.customRequirement = profile.customRequirement || ''
+}
+
+async function removeReviewProfile(profile) {
+  try {
+    await deleteReviewProfile(profile.id, currentUser.value.id)
+    reviewProfiles.value = reviewProfiles.value.filter(item => item.id !== profile.id)
+    if (editingReviewProfileId.value === profile.id) {
+      resetReviewProfileForm()
+    }
+    ElMessage.success('复习配置已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
   }
 }
 
@@ -2238,6 +2457,24 @@ function clearTeacherProfileState() {
   resetTeacherProfileForm()
 }
 
+function resetReviewProfileForm() {
+  editingReviewProfileId.value = null
+  reviewProfileForm.profileName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 复习配置`
+    : ''
+  reviewProfileForm.target = ''
+  reviewProfileForm.difficultyLevel = 'MEDIUM'
+  reviewProfileForm.outputType = 'REVIEW_NOTE'
+  reviewProfileForm.includePrerequisites = true
+  reviewProfileForm.teacherProfileId = null
+  reviewProfileForm.customRequirement = ''
+}
+
+function clearReviewProfileState() {
+  reviewProfiles.value = []
+  resetReviewProfileForm()
+}
+
 function resetExportForm() {
   exportForm.exportName = selectedCourse.value
     ? `${selectedCourse.value.courseName} 知识包`
@@ -2294,6 +2531,14 @@ function evidenceTypeLabel(type) {
   if (type === 'FOCUS_TOPIC') return '重点证据'
   if (type === 'AVOID_TOPIC') return '规避证据'
   return '风格证据'
+}
+
+function reviewDifficultyLabel(value) {
+  return reviewDifficultyOptions.find(option => option.value === value)?.label || value
+}
+
+function reviewOutputLabel(value) {
+  return reviewOutputOptions.find(option => option.value === value)?.label || value
 }
 
 function matchSourceLabel(source) {
@@ -2605,6 +2850,7 @@ async function removeCourse(courseId) {
       courseRelations.value = []
       clearGapState()
       clearTeacherProfileState()
+      clearReviewProfileState()
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -2655,6 +2901,7 @@ function logout() {
   selectedCourse.value = null
   clearGapState()
   clearTeacherProfileState()
+  clearReviewProfileState()
 }
 
 function openCourseCreator() {
@@ -5289,6 +5536,211 @@ button {
   font-size: 12px;
 }
 
+.review-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #111;
+  background: #f5f3ef;
+}
+
+.review-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.review-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.review-heading h2 span {
+  color: #ffb21c;
+}
+
+.review-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+
+.review-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ffb21c;
+}
+
+.review-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.review-form .el-select),
+:deep(.review-form .el-input),
+:deep(.review-form .el-input-number) {
+  width: 100%;
+}
+
+:deep(.review-form .el-select__wrapper),
+:deep(.review-form .el-input__wrapper),
+:deep(.review-form .el-textarea__inner) {
+  min-height: 48px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.review-switch {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-weight: 850;
+}
+
+.review-wide {
+  min-width: 0;
+}
+
+.review-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.review-form-actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.review-form-actions button:last-child {
+  background: #ffb21c;
+}
+
+.review-form-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.review-profile-list {
+  min-height: 420px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.review-profile-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 7px 7px 0 #111;
+}
+
+.review-card-top,
+.review-card-meta,
+.review-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-card-top {
+  justify-content: space-between;
+}
+
+.review-card-top span,
+.review-card-meta span {
+  padding: 4px 8px;
+  border: 1px solid #111;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.review-card-top strong {
+  color: #ff3151;
+  font-size: 12px;
+}
+
+.review-profile-card h3 {
+  margin: 16px 0 10px;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+}
+
+.review-profile-card p {
+  min-height: 52px;
+  margin: 0 0 14px;
+  color: #333;
+  line-height: 1.65;
+}
+
+.review-card-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.review-card-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.review-card-actions button:last-child {
+  color: #ff3151;
+}
+
+.review-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.review-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.review-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .export-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -6203,6 +6655,7 @@ button {
   .material-section,
   .gap-section,
   .teacher-section,
+  .review-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -6248,6 +6701,7 @@ button {
   .knowledge-heading,
   .gap-heading,
   .teacher-heading,
+  .review-heading,
   .export-heading {
     display: block;
   }
@@ -6286,6 +6740,10 @@ button {
     margin-top: 24px;
   }
 
+  .review-heading > p {
+    margin-top: 24px;
+  }
+
   .relation-heading > p {
     margin-top: 24px;
   }
@@ -6308,6 +6766,8 @@ button {
   .teacher-layout,
   .teacher-edit-grid,
   .teacher-profile-grid,
+  .review-layout,
+  .review-profile-list,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
@@ -6330,6 +6790,7 @@ button {
   .export-options,
   .knowledge-mastery-actions,
   .teacher-edit-actions,
+  .review-form-actions,
   .export-record-heading,
   .export-record-card {
     display: grid;
