@@ -26,6 +26,16 @@ export function deleteKnowledgeItem(courseId, itemId, userId) {
   })
 }
 
+export function getKnowledgeMastery(knowledgeItemId, userId) {
+  return request.get(`/knowledge-items/${knowledgeItemId}/mastery`, {
+    params: { userId }
+  })
+}
+
+export function updateKnowledgeMastery(knowledgeItemId, data) {
+  return request.put(`/knowledge-items/${knowledgeItemId}/mastery`, data)
+}
+
 export function generateKnowledgeItems(materialId, userId, data) {
   return request.post(`/materials/${materialId}/knowledge-items/ai-generate`, data, {
     params: { userId },

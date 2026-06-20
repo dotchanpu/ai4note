@@ -2,12 +2,15 @@ package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.AiKnowledgeGenerateRequest;
 import com.example.coursekb.dto.KnowledgeItemRequest;
+import com.example.coursekb.dto.KnowledgeMasteryRequest;
 import com.example.coursekb.dto.MaterialTagsRequest;
 import com.example.coursekb.service.AiKnowledgeService;
 import com.example.coursekb.service.KnowledgeItemService;
+import com.example.coursekb.service.KnowledgeMasteryService;
 import com.example.coursekb.service.TagService;
 import com.example.coursekb.vo.AiKnowledgeGenerateResultVO;
 import com.example.coursekb.vo.KnowledgeItemVO;
+import com.example.coursekb.vo.KnowledgeMasteryVO;
 import java.util.List;
 import javax.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,14 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class KnowledgeController {
     private final TagService tagService;
     private final KnowledgeItemService knowledgeItemService;
+    private final KnowledgeMasteryService knowledgeMasteryService;
     private final AiKnowledgeService aiKnowledgeService;
 
     public KnowledgeController(
             TagService tagService,
             KnowledgeItemService knowledgeItemService,
+            KnowledgeMasteryService knowledgeMasteryService,
             AiKnowledgeService aiKnowledgeService) {
         this.tagService = tagService;
         this.knowledgeItemService = knowledgeItemService;
+        this.knowledgeMasteryService = knowledgeMasteryService;
         this.aiKnowledgeService = aiKnowledgeService;
     }
 
@@ -90,6 +96,20 @@ public class KnowledgeController {
             @PathVariable Long itemId,
             @RequestParam Long userId) {
         knowledgeItemService.delete(courseId, itemId, userId);
+    }
+
+    @GetMapping("/knowledge-items/{knowledgeItemId}/mastery")
+    public KnowledgeMasteryVO getKnowledgeMastery(
+            @PathVariable Long knowledgeItemId,
+            @RequestParam Long userId) {
+        return knowledgeMasteryService.get(knowledgeItemId, userId);
+    }
+
+    @PutMapping("/knowledge-items/{knowledgeItemId}/mastery")
+    public KnowledgeMasteryVO updateKnowledgeMastery(
+            @PathVariable Long knowledgeItemId,
+            @Valid @RequestBody KnowledgeMasteryRequest request) {
+        return knowledgeMasteryService.update(knowledgeItemId, request);
     }
 
     @PostMapping("/materials/{materialId}/knowledge-items/ai-generate")

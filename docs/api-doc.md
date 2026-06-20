@@ -783,9 +783,17 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 
 ## 12. 用户掌握状态与知识缺口
 
-### 12.1 更新知识点掌握状态
+### 12.1 查询知识点掌握状态
 
-- 状态：规划中
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/knowledge-items/{knowledgeItemId}/mastery`
+
+查询参数：`userId`。如果用户尚未维护该知识点掌握状态，返回默认状态 `UNKNOWN`。
+
+### 12.2 更新知识点掌握状态
+
+- 状态：已实现
 - 方法：`PUT`
 - 路径：`/api/knowledge-items/{knowledgeItemId}/mastery`
 
@@ -796,9 +804,12 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
   "userId": 1,
   "masteryStatus": "WEAK",
   "masteryScore": 45,
-  "note": "指针操作仍不熟练"
+  "note": "指针操作仍不熟练",
+  "lastReviewTime": "2026-06-20T21:30:00"
 }
 ```
+
+`lastReviewTime` 可省略；省略时后端会使用当前时间。知识条目列表接口也会返回当前用户的 `masteryStatus`、`masteryScore`、`masteryNote`、`lastReviewTime` 和 `masteryUpdateTime`。
 
 `masteryStatus` 可选值：
 
@@ -810,7 +821,7 @@ WEAK
 NEED_REVIEW
 ```
 
-### 12.2 生成知识缺口报告
+### 12.3 生成知识缺口报告
 
 - 状态：规划中
 - 方法：`POST`
@@ -828,13 +839,13 @@ NEED_REVIEW
 
 系统综合当前课程知识点、前置课程知识点、真题高频考点和用户掌握状态生成报告。
 
-### 12.3 查询知识缺口报告
+### 12.4 查询知识缺口报告
 
 - 状态：规划中
 - 方法：`GET`
 - 路径：`/api/knowledge-gap-reports/{reportId}`
 
-### 12.4 查询知识缺口明细
+### 12.5 查询知识缺口明细
 
 - 状态：规划中
 - 方法：`GET`
