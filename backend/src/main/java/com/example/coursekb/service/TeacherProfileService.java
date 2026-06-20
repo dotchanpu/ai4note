@@ -171,6 +171,15 @@ public class TeacherProfileService {
         return TeacherProfileVO.from(teacherProfileRepository.save(profile));
     }
 
+    public TeacherProfileVO recalculateConfidence(Long profileId, Long userId) {
+        TeacherProfile profile = getOwnedProfile(profileId, userId);
+        courseService.getOwnedCourse(profile.getCourseId(), userId);
+        List<TeacherProfileEvidence> evidenceList = teacherProfileEvidenceRepository
+                .findByTeacherProfileIdOrderByConfidenceScoreDescIdAsc(profileId);
+        profile.setConfidenceScore(calculateConfidence(profile, evidenceList));
+        return TeacherProfileVO.from(teacherProfileRepository.save(profile));
+    }
+
     private List<Material> resolveMaterials(Long courseId, List<Long> materialIds) {
         List<Material> materials = materialRepository.findByCourseIdOrderByUploadTimeDesc(courseId);
         if (materialIds == null || materialIds.isEmpty()) {
@@ -331,6 +340,59 @@ public class TeacherProfileService {
         }
         BigDecimal max = new BigDecimal("100");
         return value.compareTo(max) > 0 ? max : value;
+    }
+
+    private BigDecimal calculateConfidence(
+            TeacherProfile profile,
+            List<TeacherProfileEvidence> evidenceList) {
+        BigDecimal score = new BigDecimal("35");
+        score = score.add(fieldScore(profile.getExamStyle(), 8));
+        score = score.add(fieldScore(profile.getQuestionPreference(), 8));
+        score = score.add(fieldScore(profile.getGradingPreference(), 8));
+        score = score.add(fieldScore(profile.getFocusTopics(), 8));
+        score = score.add(fieldScore(profile.getAvoidTopics(), 3));
+        score = score.add(fieldScore(profile.getSourceSummary(), 5));
+
+        int evidenceCount = evidenceList == null ? 0 : evidenceList.size();
+        score = score.add(new BigDecimal(Math.min(24, evidenceCount * 4)));
+        if (evidenceCount > 0) {
+            BigDecimal averageEvidenceConfidence = evidenceList.stream()
+                    .map(TeacherProfileEvidence::getConfidenceScore)
+                    .filter(value -> value != null)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .divide(new BigDecimal(evidenceCount), 2, java.math.RoundingMode.HALF_UP);
+            score = score.add(averageEvidenceConfidence.multiply(new BigDecimal("0.10")));
+            long materialCount = evidenceList.stream()
+                    .map(TeacherProfileEvidence::getMaterialId)
+                    .distinct()
+                    .count();
+            score = score.add(new BigDecimal(Math.min(8, materialCount * 2)));
+        }
+        if ("MANUAL_REVIEWED".equals(profile.getAnalysisStatus())) {
+            score = score.add(new BigDecimal("5"));
+        }
+        score = normalizeConfidence(score);
+        if ("FAILED".equals(profile.getAnalysisStatus()) && score.compareTo(new BigDecimal("45")) > 0) {
+            return new BigDecimal("45");
+        }
+        if ("RUNNING".equals(profile.getAnalysisStatus()) && score.compareTo(new BigDecimal("50")) > 0) {
+            return new BigDecimal("50");
+        }
+        return score;
+    }
+
+    private BigDecimal fieldScore(String value, int maxScore) {
+        if (value == null || value.trim().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        int length = value.trim().length();
+        if (length >= 30) {
+            return new BigDecimal(maxScore);
+        }
+        if (length >= 10) {
+            return new BigDecimal(Math.max(1, maxScore - 2));
+        }
+        return new BigDecimal(Math.max(1, maxScore / 2));
     }
 
     private String normalizeManualStatus(String value) {
