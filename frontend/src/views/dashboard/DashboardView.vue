@@ -846,6 +846,34 @@
                   {{ selectedGapReport.summary }}
                 </p>
 
+                <div v-if="selectedGapReport" class="remediation-path-panel" v-loading="remediationPathLoading">
+                  <div class="remediation-path-heading">
+                    <div>
+                      <span>补学路径</span>
+                      <strong>{{ remediationPath?.stages?.length || 0 }}</strong>
+                    </div>
+                    <button type="button" :disabled="remediationPathLoading" @click="loadRemediationPath">
+                      {{ remediationPathLoading ? '生成中…' : '生成补学路径' }}
+                    </button>
+                  </div>
+                  <p v-if="remediationPath" class="remediation-path-summary">{{ remediationPath.summary }}</p>
+                  <div v-if="remediationPath?.stages?.length" class="remediation-stage-list">
+                    <article v-for="stage in remediationPath.stages" :key="stage.stageKey">
+                      <div>
+                        <span>{{ stage.stageName }}</span>
+                        <strong>{{ stage.items.length }} 项</strong>
+                      </div>
+                      <p>{{ stage.objective }}</p>
+                      <ol>
+                        <li v-for="item in stage.items.slice(0, 5)" :key="item.knowledgeItemId">
+                          <strong>{{ item.knowledgeTitle }}</strong>
+                          <span>{{ item.sourceCourseName }} · 优先级 {{ item.severityLevel }}</span>
+                        </li>
+                      </ol>
+                    </article>
+                  </div>
+                </div>
+
                 <div v-if="gapItems.length > 0" class="gap-item-grid">
                   <article v-for="item in gapItems" :key="item.id" class="gap-item-card">
                     <div class="gap-item-top">
@@ -2142,6 +2170,7 @@ import {
 } from '../../api/export'
 import {
   createKnowledgeGapReport,
+  getKnowledgeRemediationPath,
   listKnowledgeGapItems,
   listKnowledgeGapReports,
   listPrerequisiteGapHints
@@ -2195,6 +2224,7 @@ const gapLoading = ref(false)
 const gapGenerating = ref(false)
 const gapItemLoading = ref(false)
 const prerequisiteGapLoading = ref(false)
+const remediationPathLoading = ref(false)
 const teacherProfileLoading = ref(false)
 const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
@@ -2242,6 +2272,7 @@ const knowledgeItems = ref([])
 const gapReports = ref([])
 const gapItems = ref([])
 const prerequisiteGapHints = ref([])
+const remediationPath = ref(null)
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const mockExamResult = ref(null)
@@ -2798,6 +2829,7 @@ async function generateGapReport() {
 
 async function selectGapReport(report) {
   selectedGapReport.value = report
+  remediationPath.value = null
   gapItemLoading.value = true
   try {
     gapItems.value = await listKnowledgeGapItems(report.id, currentUser.value.id)
@@ -2805,6 +2837,21 @@ async function selectGapReport(report) {
     ElMessage.error(error.message)
   } finally {
     gapItemLoading.value = false
+  }
+}
+
+async function loadRemediationPath() {
+  if (!selectedGapReport.value || !currentUser.value) return
+  remediationPathLoading.value = true
+  try {
+    remediationPath.value = await getKnowledgeRemediationPath(
+      selectedGapReport.value.id,
+      currentUser.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    remediationPathLoading.value = false
   }
 }
 
@@ -3484,6 +3531,7 @@ function clearGapState() {
   gapReports.value = []
   gapItems.value = []
   prerequisiteGapHints.value = []
+  remediationPath.value = null
   selectedGapReport.value = null
   resetGapForm()
 }
@@ -6600,6 +6648,102 @@ button {
   background: #fff;
   color: #333;
   line-height: 1.7;
+}
+
+.remediation-path-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #14cbea;
+}
+
+.remediation-path-heading,
+.remediation-stage-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.remediation-path-heading span,
+.remediation-stage-list article > div span {
+  display: block;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.remediation-path-heading strong {
+  display: block;
+  color: #111;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.remediation-path-heading button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #14cbea;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.remediation-path-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.remediation-path-summary {
+  margin: 12px 0 0;
+  color: #444;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.remediation-stage-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.remediation-stage-list article {
+  padding: 14px;
+  border: 1px solid #111;
+  background: #f5f3ef;
+}
+
+.remediation-stage-list article > div strong {
+  color: #ff3151;
+  font-size: 11px;
+}
+
+.remediation-stage-list p {
+  margin: 9px 0;
+  color: #444;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.remediation-stage-list ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.remediation-stage-list li strong,
+.remediation-stage-list li span {
+  display: block;
+  font-size: 12px;
+}
+
+.remediation-stage-list li span {
+  margin-top: 3px;
+  color: #777;
 }
 
 .gap-item-grid {

@@ -4,6 +4,7 @@ import com.example.coursekb.dto.KnowledgeGapReportRequest;
 import com.example.coursekb.service.KnowledgeGapService;
 import com.example.coursekb.vo.KnowledgeGapItemVO;
 import com.example.coursekb.vo.KnowledgeGapReportVO;
+import com.example.coursekb.vo.KnowledgeRemediationPathVO;
 import java.util.List;
 import javax.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -56,5 +57,12 @@ public class KnowledgeGapController {
             @PathVariable Long reportId,
             @RequestParam Long userId) {
         return knowledgeGapService.listItems(reportId, userId);
+    }
+
+    @GetMapping("/knowledge-gap-reports/{reportId}/remediation-path")
+    public KnowledgeRemediationPathVO buildRemediationPath(
+            @PathVariable Long reportId,
+            @RequestParam Long userId) {
+        return knowledgeGapService.buildRemediationPath(reportId, userId);
     }
 }
