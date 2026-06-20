@@ -290,6 +290,13 @@
                       >
                         查看文本 ↗
                       </button>
+                      <button
+                        v-if="material.materialType === 'EXAM'"
+                        type="button"
+                        @click="openExamWorkbench(material)"
+                      >
+                        exam mapping
+                      </button>
                       <button type="button" class="danger-text" @click="confirmMaterialDeletion(material)">
                         删除资料
                       </button>
@@ -535,6 +542,22 @@
                 <p>先解析一份 PDF，再让 AI 从完整语义中整理知识。</p>
               </div>
             </div>
+          </section>
+
+          <section
+            id="exam"
+            class="exam-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'exam' }"
+          >
+            <ExamMappingPanel
+              :selected-course="selectedCourse"
+              :current-user-id="currentUser?.id"
+              :materials="materials"
+              :chapters="chapters"
+              :knowledge-items="knowledgeItems"
+              :preferred-material-id="examPreferredMaterialId"
+              @material-parsed="handleExamMaterialParsed"
+            />
           </section>
         </template>
 
@@ -856,6 +879,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import ExamMappingPanel from '../../components/dashboard/ExamMappingPanel.vue'
 import { login, register } from '../../api/auth'
 import {
   createChapter,
@@ -925,13 +949,15 @@ const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
 const textChunks = ref([])
 const activeSection = ref('overview')
+const examPreferredMaterialId = ref(null)
 
 const pageSections = [
   { id: 'overview', label: 'overview.', title: '课程概览' },
   { id: 'chapters', label: 'chapters.', title: '章节路径' },
   { id: 'materials', label: 'materials.', title: '课程资料' },
   { id: 'search', label: 'search.', title: '课程检索' },
-  { id: 'knowledge', label: 'knowledge.', title: '知识条目' }
+  { id: 'knowledge', label: 'knowledge.', title: '知识条目' },
+  { id: 'exam', label: 'exam.', title: 'Exam Mapping' }
 ]
 
 const materialTypeOptions = [
@@ -1082,6 +1108,7 @@ async function loadCourses() {
 async function selectCourse(course) {
   selectedCourse.value = course
   activeSection.value = 'overview'
+  examPreferredMaterialId.value = null
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1358,6 +1385,18 @@ async function showParsedText(material) {
     ElMessage.error(error.message)
   } finally {
     textChunkLoading.value = false
+  }
+}
+
+function openExamWorkbench(material) {
+  examPreferredMaterialId.value = material.id
+  scrollToSection('exam')
+}
+
+function handleExamMaterialParsed({ materialId, chunkCount }) {
+  const target = materials.value.find(item => item.id === materialId)
+  if (target) {
+    target.parsedChunkCount = chunkCount
   }
 }
 

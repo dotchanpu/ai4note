@@ -690,30 +690,78 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 
 ### 11.1 从真题资料中抽取题目
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/materials/{materialId}/exam-questions/extract`
 
-系统将真题资料拆分为独立题目，并提取题号、题型、题干、答案、分值和年份等信息。
+请求参数：
+
+- `userId`：必填
+- `overwrite`：可选，默认 `false`
+
+当前行为说明：
+
+- 当前仅支持 `EXAM` 类型且文件类型为 `PDF` 的资料
+- 抽题依赖已有解析文本；若资料尚未解析，会返回“需先解析后再抽题”的业务错误
+- 支持 `overwrite=true` 覆盖重写
+- 覆盖重写会先清空该资料已有的真题及其知识点映射，再写入本次抽取结果
+- 抽题完成后，会自动尝试映射到当前课程下已经存在的知识条目；若课程尚无可用知识条目，则不会生成自动映射结果
+
+抽取字段至少包括题号、题型、题干、答案、分值、年份和来源页码。其中题型会在入库阶段统一清洗为中文标准值。
 
 ### 11.2 查询课程真题
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-questions`
 
+查询参数：
+
+- `userId`：必填
+- `page`：可选，默认 `1`
+- `size`：可选，默认 `12`
+- `year`：可选
+- `chapterId`：可选
+- `questionType`：可选
+- `materialId`：可选
+
+接口返回分页对象，而不是裸数组：
+
+```json
+{
+  "items": [
+    {
+      "id": 101,
+      "materialId": 12,
+      "questionType": "简答题",
+      "questionText": "说明事务的 ACID 特性",
+      "sourcePage": 3,
+      "mappings": []
+    }
+  ],
+  "total": 147,
+  "page": 1,
+  "size": 12,
+  "totalPages": 13
+}
+```
+
+列表按卷面顺序优先返回，当前排序口径为：`examYear DESC -> materialId DESC -> sourcePage ASC -> normalizedQuestionNo ASC -> id ASC`。
+
 ### 11.3 建立题目与知识点映射
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/exam-questions/{questionId}/knowledge-map`
+
+该接口当前主要用于人工修正或补充题目与知识点映射，不再作为主映射入口；主流程会在抽题完成后自动尝试进行 AI 映射。
 
 请求体示例：
 
 ```json
 {
   "knowledgeItemId": 20,
-  "matchSource": "AI",
+  "matchSource": "MANUAL",
   "confidenceScore": 92.5,
   "reason": "题目要求实现二叉树中序遍历"
 }
@@ -721,11 +769,11 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 
 ### 11.4 查询高频考点统计
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-knowledge-stats`
 
-可按年份、章节和题型统计知识点出现频率。
+该接口会基于当前真题映射结果做实时聚合统计，可按年份、章节和题型筛选知识点命中次数、累计分值和最近出现年份。
 
 ## 12. 用户掌握状态与知识缺口
 

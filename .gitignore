@@ -25,9 +25,16 @@ backend/.mvn/wrapper/maven-wrapper.jar
 storage/uploads/**/*
 storage/parsed-text/**/*
 storage/exports/**/*
+storage-dev/**/*
 !storage/uploads/**/.gitkeep
 !storage/parsed-text/.gitkeep
 !storage/exports/.gitkeep
+!storage-dev/uploads/.gitkeep
+!storage-dev/parsed-text/.gitkeep
+!storage-dev/exports/.gitkeep
+
+# Local engineering docs
+.local-dev-docs/
 
 # Logs
 *.log
