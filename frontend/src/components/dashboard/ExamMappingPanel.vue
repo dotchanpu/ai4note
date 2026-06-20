@@ -301,7 +301,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['material-parsed'])
+const emit = defineEmits(['material-parsed', 'stats-changed'])
 
 const questions = ref([])
 const stats = ref([])
@@ -437,6 +437,7 @@ async function confirmParse(material) {
       materialId: material.id,
       chunkCount: result.chunkCount
     })
+    emit('stats-changed')
     material.parsedChunkCount = result.chunkCount
     ElMessage.success(`解析完成，共提取 ${result.chunkCount} 个文本块`)
     return true
@@ -471,6 +472,7 @@ async function doExtract(material, overwrite) {
     const result = await extractExamQuestions(material.id, props.currentUserId, overwrite)
     filters.materialId = material.id
     await reloadData()
+    emit('stats-changed')
     ElMessage.success(`已抽取 ${result.length} 道题目`)
   } catch (error) {
     if (error.message === MATERIAL_NOT_PARSED) {
@@ -512,6 +514,7 @@ async function submitMapping(question) {
     })
     mappingDrafts[question.id] = null
     await reloadData()
+    emit('stats-changed')
     ElMessage.success('题目与知识点已建立映射')
   } catch (error) {
     ElMessage.error(error.message)
