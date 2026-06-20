@@ -1468,6 +1468,7 @@ source/related-course-files.md
 ```
 
 成功后会在 `storage/exports/` 下生成 ZIP 文件，并写入 `export_record`。
+同一用户、同一课程的导出记录会自动分配递增版本号 `versionNo`，用于查看和下载历史版本。
 
 ### 15.4 查询导出记录
 
@@ -1482,7 +1483,17 @@ source/related-course-files.md
 | `userId` | 是 | 当前用户 ID |
 | `courseId` | 否 | 课程 ID；传入时只查询该课程导出记录 |
 
-### 15.5 下载导出知识包
+返回字段包含 `versionNo` 和 `recommended`。前端会按导出时间展示该课程的历史版本，并支持下载任意历史 ZIP。
+
+### 15.5 标记当前推荐版本
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/exports/{exportId}/recommended`
+
+查询参数：`userId`。后端会校验导出记录归属和课程归属，并将同一用户、同一课程下其他导出记录的 `recommended` 清空，仅保留当前记录为推荐版本。
+
+### 15.6 下载导出知识包
 
 - 状态：已实现
 - 方法：`GET`

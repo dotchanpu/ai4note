@@ -212,6 +212,7 @@ GET  /api/export-templates
 POST /api/exports/preview
 POST /api/exports
 GET  /api/exports?userId={userId}&courseId={courseId}
+PUT  /api/exports/{exportId}/recommended?userId={userId}
 GET  /api/exports/{exportId}/download?userId={userId}
 ```
 

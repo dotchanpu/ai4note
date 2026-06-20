@@ -36,6 +36,12 @@ public class ExportRecord {
     @Column(name = "export_scope", columnDefinition = "TEXT")
     private String exportScope;
 
+    @Column(name = "version_no", nullable = false)
+    private Integer versionNo = 1;
+
+    @Column(name = "recommended", nullable = false)
+    private Byte recommendedFlag = 0;
+
     @Column(name = "export_time", insertable = false, updatable = false)
     private LocalDateTime exportTime;
 
@@ -97,6 +103,22 @@ public class ExportRecord {
 
     public void setExportScope(String exportScope) {
         this.exportScope = exportScope;
+    }
+
+    public Integer getVersionNo() {
+        return versionNo;
+    }
+
+    public void setVersionNo(Integer versionNo) {
+        this.versionNo = versionNo;
+    }
+
+    public Boolean getRecommended() {
+        return recommendedFlag != null && recommendedFlag != 0;
+    }
+
+    public void setRecommended(Boolean recommended) {
+        this.recommendedFlag = Boolean.TRUE.equals(recommended) ? (byte) 1 : (byte) 0;
     }
 
     public LocalDateTime getExportTime() {
