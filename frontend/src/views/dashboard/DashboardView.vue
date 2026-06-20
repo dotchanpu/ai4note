@@ -1001,6 +1001,58 @@
                       <p>{{ selectedTeacherProfile.sourceSummary || '暂无分析结果' }}</p>
                     </section>
                   </div>
+                  <form class="mock-exam-panel" @submit.prevent="generateMockExamFromProfile">
+                    <div class="mock-exam-heading">
+                      <div>
+                        <span>AI 模拟题</span>
+                        <strong>基于画像生成</strong>
+                      </div>
+                      <button type="submit" :disabled="mockExamGenerating">
+                        {{ mockExamGenerating ? '生成中…' : '生成模拟题' }}
+                      </button>
+                    </div>
+                    <div class="mock-exam-controls">
+                      <label>
+                        <span>题数</span>
+                        <el-input-number
+                          v-model="mockExamForm.questionCount"
+                          :min="1"
+                          :max="30"
+                          :step="1"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label>
+                        <span>难度</span>
+                        <el-select v-model="mockExamForm.difficultyLevel">
+                          <el-option
+                            v-for="option in reviewDifficultyOptions"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                          />
+                        </el-select>
+                      </label>
+                      <label>
+                        <span>补充要求</span>
+                        <el-input
+                          v-model="mockExamForm.customRequirement"
+                          maxlength="1000"
+                          placeholder="例如：增加设计题或实验题"
+                        />
+                      </label>
+                    </div>
+                    <div v-if="mockExamResult" class="mock-exam-result">
+                      <div>
+                        <strong>{{ mockExamResult.title }}</strong>
+                        <span>{{ mockExamResult.questionCount }} 题 · {{ mockExamResult.resultPath }}</span>
+                      </div>
+                      <button type="button" @click="downloadMockExam(mockExamResult.task)">
+                        下载 Markdown
+                      </button>
+                      <pre>{{ mockExamResult.content }}</pre>
+                    </div>
+                  </form>
                   <div v-loading="teacherEvidenceLoading" class="teacher-evidence-panel">
                     <div class="teacher-evidence-heading">
                       <strong>{{ teacherProfileEvidence.length }}</strong>
@@ -1273,6 +1325,12 @@
                   <span v-if="task.resultPath">{{ task.resultPath }}</span>
                 </div>
                 <small v-if="task.errorMessage">{{ task.errorMessage }}</small>
+                <div
+                  v-if="task.taskType === 'MOCK_EXAM' && task.status === 'SUCCESS' && task.resultPath"
+                  class="ai-task-actions"
+                >
+                  <button type="button" @click="downloadMockExam(task)">下载模拟题</button>
+                </div>
               </article>
 
               <div v-if="!aiTaskLoading && aiGenerationTasks.length === 0" class="ai-task-empty">
@@ -2012,6 +2070,10 @@ import {
   updateTeacherProfile
 } from '../../api/teacher'
 import {
+  generateMockExam,
+  mockExamDownloadUrl
+} from '../../api/mockExam'
+import {
   createReviewProfile,
   deleteReviewProfile,
   listReviewProfiles,
@@ -2048,6 +2110,7 @@ const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
 const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
+const mockExamGenerating = ref(false)
 const reviewProfileLoading = ref(false)
 const reviewProfileSaving = ref(false)
 const aiProviderLoading = ref(false)
@@ -2087,6 +2150,7 @@ const gapReports = ref([])
 const gapItems = ref([])
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
+const mockExamResult = ref(null)
 const reviewProfiles = ref([])
 const aiProviders = ref([])
 const aiGenerationTasks = ref([])
@@ -2320,6 +2384,12 @@ const gapForm = reactive({
 const teacherProfileForm = reactive({
   teacherName: '',
   materialIds: []
+})
+
+const mockExamForm = reactive({
+  questionCount: 8,
+  difficultyLevel: 'MEDIUM',
+  customRequirement: ''
 })
 
 const teacherEditForm = reactive({
@@ -2663,6 +2733,7 @@ async function runTeacherProfileAnalysis() {
 async function selectTeacherProfile(profile) {
   selectedTeacherProfile.value = profile
   teacherProfileEditing.value = false
+  mockExamResult.value = null
   teacherEvidenceLoading.value = true
   try {
     teacherProfileEvidence.value = await listTeacherProfileEvidence(profile.id, currentUser.value.id)
@@ -2671,6 +2742,34 @@ async function selectTeacherProfile(profile) {
   } finally {
     teacherEvidenceLoading.value = false
   }
+}
+
+async function generateMockExamFromProfile() {
+  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  mockExamGenerating.value = true
+  try {
+    const result = await generateMockExam(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherProfileId: selectedTeacherProfile.value.id,
+      questionCount: mockExamForm.questionCount,
+      difficultyLevel: mockExamForm.difficultyLevel,
+      model: 'deepseek-v4-flash',
+      customRequirement: mockExamForm.customRequirement.trim() || null
+    })
+    mockExamResult.value = result
+    await loadAiGenerationTasks()
+    ElMessage.success(`已生成 ${result.questionCount} 道模拟题`)
+  } catch (error) {
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    mockExamGenerating.value = false
+  }
+}
+
+function downloadMockExam(task) {
+  if (!task || !currentUser.value) return
+  window.open(mockExamDownloadUrl(task.id, currentUser.value.id), '_blank')
 }
 
 async function loadReviewProfiles() {
@@ -3203,11 +3302,19 @@ function resetTeacherProfileForm() {
   teacherProfileForm.materialIds = []
 }
 
+function resetMockExamForm() {
+  mockExamForm.questionCount = 8
+  mockExamForm.difficultyLevel = 'MEDIUM'
+  mockExamForm.customRequirement = ''
+  mockExamResult.value = null
+}
+
 function clearTeacherProfileState() {
   teacherProfiles.value = []
   teacherProfileEvidence.value = []
   selectedTeacherProfile.value = null
   resetTeacherProfileForm()
+  resetMockExamForm()
 }
 
 function resetReviewProfileForm() {
@@ -6561,6 +6668,103 @@ button {
   white-space: pre-wrap;
 }
 
+.mock-exam-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid #0de0c0;
+  background: #101010;
+}
+
+.mock-exam-heading,
+.mock-exam-result > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mock-exam-heading span,
+.mock-exam-controls label > span,
+.mock-exam-result span {
+  display: block;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.mock-exam-heading strong,
+.mock-exam-result strong {
+  display: block;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 18px;
+}
+
+.mock-exam-heading button,
+.mock-exam-result button,
+.ai-task-actions button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #0de0c0;
+  background: #0de0c0;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mock-exam-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.mock-exam-controls {
+  display: grid;
+  grid-template-columns: 140px 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+:deep(.mock-exam-controls .el-input-number),
+:deep(.mock-exam-controls .el-select) {
+  width: 100%;
+}
+
+:deep(.mock-exam-controls .el-input__wrapper),
+:deep(.mock-exam-controls .el-input-number .el-input__wrapper),
+:deep(.mock-exam-controls .el-select__wrapper) {
+  min-height: 42px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.mock-exam-result {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #333;
+}
+
+.mock-exam-result > button {
+  justify-self: start;
+}
+
+.mock-exam-result pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #333;
+  background: #080808;
+  color: #ddd;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 .teacher-evidence-panel {
   margin-top: 22px;
   padding-top: 18px;
@@ -7255,6 +7459,12 @@ button {
   line-height: 1.6;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-task-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .ai-task-empty {
@@ -8706,6 +8916,7 @@ button {
   .teacher-layout,
   .teacher-edit-grid,
   .teacher-profile-grid,
+  .mock-exam-controls,
   .review-layout,
   .review-profile-list,
   .ai-config-status,
