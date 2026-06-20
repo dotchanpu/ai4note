@@ -12,6 +12,12 @@ export function analyzeTeacherProfile(courseId, data) {
   })
 }
 
+export function reanalyzeTeacherProfile(profileId, data) {
+  return request.post(`/teacher-profiles/${profileId}/reanalyze`, data, {
+    timeout: 180000
+  })
+}
+
 export function listTeacherProfileEvidence(profileId, userId) {
   return request.get(`/teacher-profiles/${profileId}/evidence`, {
     params: { userId }

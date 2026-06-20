@@ -1144,6 +1144,25 @@ MANUAL_REVIEWED
 
 查询参数：`userId`。后端会校验画像归属，并根据画像字段完整度、证据数量、证据平均置信度、证据资料来源多样性和分析状态重新计算 `confidenceScore`。该接口不重新调用 AI，也不会修改画像正文。
 
+### 13.6 重新分析教师画像
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/teacher-profiles/{profileId}/reanalyze`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "materialIds": [],
+  "model": "deepseek-v4-flash",
+  "providerConfigId": null
+}
+```
+
+后端会复用原教师画像的教师名称，重新读取课程资料和真题上下文调用 DeepSeek。分析期间画像状态更新为 `RUNNING`，成功后覆盖画像正文和证据来源，失败时保留画像记录并写入 `FAILED` 状态。该流程会新增一条 `TEACHER_PROFILE` 类型的 AI 生成任务记录。
+
 ## 14. AI 服务与任务
 
 ### 14.1 查询 DeepSeek 配置状态
