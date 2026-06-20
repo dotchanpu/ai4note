@@ -909,15 +909,15 @@ UNREVIEWED
 
 系统综合课件、往年真题、实验要求和评分标准，分析教师的出题风格、常见题型、评分偏好和重点章节。
 
-当前实现使用 DeepSeek 默认配置调用结构化 JSON 分析；`providerConfigId` 字段预留给多供应商 AI 配置模块。分析成功后写入 `teacher_profile`，失败时保留 `FAILED` 状态记录。
+当前实现使用 DeepSeek 默认配置调用结构化 JSON 分析；`providerConfigId` 字段预留给多供应商 AI 配置模块。分析成功后写入 `teacher_profile`，并保存 `teacher_profile_evidence` 证据来源；失败时保留 `FAILED` 状态记录。
 
 ### 13.3 查询教师画像证据
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/teacher-profiles/{profileId}/evidence`
 
-证据响应应包含资料、来源页码、证据摘要和置信度。
+查询参数：`userId`。证据响应包含资料 ID、资料标题、资料类型、证据类型、来源页码、证据摘要和置信度。后端会校验教师画像归属和课程归属。
 
 ### 13.4 人工确认或修正教师画像
 

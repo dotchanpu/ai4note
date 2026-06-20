@@ -2,6 +2,7 @@ package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
 import com.example.coursekb.service.TeacherProfileService;
+import com.example.coursekb.vo.TeacherProfileEvidenceVO;
 import com.example.coursekb.vo.TeacherProfileVO;
 import java.util.List;
 import javax.validation.Valid;
@@ -34,5 +35,12 @@ public class TeacherProfileController {
             @PathVariable Long courseId,
             @Valid @RequestBody TeacherProfileAnalyzeRequest request) {
         return teacherProfileService.analyze(courseId, request);
+    }
+
+    @GetMapping("/teacher-profiles/{profileId}/evidence")
+    public List<TeacherProfileEvidenceVO> listEvidence(
+            @PathVariable Long profileId,
+            @RequestParam Long userId) {
+        return teacherProfileService.listEvidence(profileId, userId);
     }
 }
