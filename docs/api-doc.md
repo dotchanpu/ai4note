@@ -1021,7 +1021,7 @@ MANUAL_REVIEWED
 
 ### 14.4 创建个性化复习配置
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/review-profiles`
 
@@ -1040,6 +1040,36 @@ MANUAL_REVIEWED
   "customRequirement": "重点覆盖树、图和排序"
 }
 ```
+
+字段约束：
+
+- `difficultyLevel`：`EASY`、`MEDIUM`、`MEDIUM_HARD`、`HARD`
+- `outputType`：`REVIEW_NOTE`、`OUTLINE`、`FLASHCARDS`、`MOCK_EXAM`、`CHECKLIST`
+- `teacherProfileId` 可为空；传入时后端会校验教师画像属于当前用户和课程。
+
+### 14.5 查询个性化复习配置
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/review-profiles`
+
+查询参数：`userId`、`courseId`。返回该课程的复习生成配置列表。
+
+### 14.6 修改个性化复习配置
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/review-profiles/{profileId}`
+
+请求体同创建接口。后端会校验配置归属和课程归属。
+
+### 14.7 删除个性化复习配置
+
+- 状态：已实现
+- 方法：`DELETE`
+- 路径：`/api/review-profiles/{profileId}`
+
+查询参数：`userId`。
 
 ### 14.5 创建 AI 生成任务
 
