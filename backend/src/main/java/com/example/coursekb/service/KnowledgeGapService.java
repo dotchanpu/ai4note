@@ -17,6 +17,7 @@ import com.example.coursekb.mapper.UserKnowledgeStatusRepository;
 import com.example.coursekb.vo.ExamKnowledgeStatVO;
 import com.example.coursekb.vo.KnowledgeGapItemVO;
 import com.example.coursekb.vo.KnowledgeGapReportVO;
+import com.example.coursekb.vo.KnowledgeRemediationPathVO;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -231,6 +232,61 @@ public class KnowledgeGapService {
                 .sorted(Comparator.comparing(KnowledgeGapItemVO::getSeverityLevel).reversed()
                         .thenComparing(KnowledgeGapItemVO::getKnowledgeItemId))
                 .collect(Collectors.toList());
+    }
+
+    public KnowledgeRemediationPathVO buildRemediationPath(Long reportId, Long userId) {
+        KnowledgeGapReport report = getOwnedReport(reportId, userId);
+        courseService.getOwnedCourse(report.getCourseId(), userId);
+        List<KnowledgeGapItemVO> gapItems = listItems(reportId, userId);
+        KnowledgeRemediationPathVO result = new KnowledgeRemediationPathVO();
+        result.setReportId(report.getId());
+        result.setReportName(report.getReportName());
+        result.setTotalItemCount(gapItems.size());
+
+        KnowledgeRemediationPathVO.Stage prerequisiteStage = new KnowledgeRemediationPathVO.Stage(
+                "PREREQUISITE_REPAIR", "先补前置基础", "优先补齐来自前置课程的薄弱知识，降低后续复习阻力");
+        KnowledgeRemediationPathVO.Stage priorityStage = new KnowledgeRemediationPathVO.Stage(
+                "HIGH_PRIORITY", "攻克高优先级缺口", "处理严重程度较高或掌握分数较低的核心知识点");
+        KnowledgeRemediationPathVO.Stage examStage = new KnowledgeRemediationPathVO.Stage(
+                "EXAM_PRACTICE", "专项真题训练", "围绕真题命中较多的知识点做题和复盘");
+        KnowledgeRemediationPathVO.Stage consolidationStage = new KnowledgeRemediationPathVO.Stage(
+                "CONSOLIDATION", "复盘巩固", "对未评估或低频缺口做快速自测并更新掌握状态");
+
+        for (KnowledgeGapItemVO item : gapItems.stream()
+                .sorted(Comparator.comparing(KnowledgeGapItemVO::getSeverityLevel).reversed()
+                        .thenComparing(Comparator.comparingLong(KnowledgeGapItemVO::getExamQuestionCount).reversed())
+                        .thenComparing(KnowledgeGapItemVO::getKnowledgeItemId))
+                .collect(Collectors.toList())) {
+            KnowledgeRemediationPathVO.Item pathItem = new KnowledgeRemediationPathVO.Item(item);
+            if (item.getRelatedCourseRelationId() != null) {
+                prerequisiteStage.getItems().add(pathItem);
+            } else if (item.getSeverityLevel() != null && item.getSeverityLevel() >= 4) {
+                priorityStage.getItems().add(pathItem);
+            } else if (item.getExamQuestionCount() > 0 || "HIGH_FREQUENCY".equals(item.getGapType())) {
+                examStage.getItems().add(pathItem);
+            } else {
+                consolidationStage.getItems().add(pathItem);
+            }
+        }
+
+        List<KnowledgeRemediationPathVO.Stage> stages = new ArrayList<>();
+        addStageIfNotEmpty(stages, prerequisiteStage);
+        addStageIfNotEmpty(stages, priorityStage);
+        addStageIfNotEmpty(stages, examStage);
+        addStageIfNotEmpty(stages, consolidationStage);
+        result.setStages(stages);
+        result.setSummary("共 " + gapItems.size() + " 个缺口，建议按 "
+                + stages.stream().map(KnowledgeRemediationPathVO.Stage::getStageName).collect(Collectors.joining(" → "))
+                + " 的顺序补学。");
+        return result;
+    }
+
+    private void addStageIfNotEmpty(
+            List<KnowledgeRemediationPathVO.Stage> stages,
+            KnowledgeRemediationPathVO.Stage stage) {
+        if (!stage.getItems().isEmpty()) {
+            stages.add(stage);
+        }
     }
 
     private KnowledgeGapReport getOwnedReport(Long reportId, Long userId) {

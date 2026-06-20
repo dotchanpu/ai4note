@@ -29,3 +29,9 @@ export function listPrerequisiteGapHints(courseId, userId) {
     params: { userId }
   })
 }
+
+export function getKnowledgeRemediationPath(reportId, userId) {
+  return request.get(`/knowledge-gap-reports/${reportId}/remediation-path`, {
+    params: { userId }
+  })
+}
