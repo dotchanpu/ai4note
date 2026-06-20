@@ -1,6 +1,7 @@
 package com.example.coursekb.service;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
+import com.example.coursekb.dto.TeacherProfileReanalyzeRequest;
 import com.example.coursekb.dto.TeacherProfileUpdateRequest;
 import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.Course;
@@ -151,6 +152,56 @@ public class TeacherProfileService {
                             material == null ? null : material.getMaterialType());
                 })
                 .collect(Collectors.toList());
+    }
+
+    public TeacherProfileVO reanalyze(Long profileId, TeacherProfileReanalyzeRequest request) {
+        TeacherProfile profile = getOwnedProfile(profileId, request.getUserId());
+        Course course = courseService.getOwnedCourse(profile.getCourseId(), request.getUserId());
+        List<Material> materials = resolveMaterials(course.getId(), request.getMaterialIds());
+        String source = buildSource(course, materials);
+        if (source.trim().isEmpty()) {
+            throw new BusinessException("请先解析课程资料或抽取真题后再重新分析教师画像");
+        }
+
+        String systemPrompt = buildSystemPrompt();
+        String prompt = systemPrompt + "\n\n教师：" + profile.getTeacherName() + "\n\n" + source;
+        profile.setGeneratedByAi(true);
+        profile.setAnalysisStatus("RUNNING");
+        profile = teacherProfileRepository.save(profile);
+        AiGenerationTask task = aiGenerationTaskService.createTask(
+                request.getUserId(),
+                course.getId(),
+                "TEACHER_PROFILE",
+                prompt,
+                null,
+                profile.getId(),
+                request.getProviderConfigId());
+        aiGenerationTaskService.markRunning(task.getId());
+
+        try {
+            String json = deepSeekService.generateJson(
+                    request.getUserId(),
+                    course.getId(),
+                    systemPrompt,
+                    source,
+                    request.getModel(),
+                    8192);
+            JsonNode root = parseJson(json);
+            applyAnalysis(profile, root);
+            profile.setAnalysisStatus("SUCCESS");
+            profile.setLastAnalyzedTime(LocalDateTime.now());
+            TeacherProfile saved = teacherProfileRepository.save(profile);
+            saveEvidence(saved, root.path("evidence"), materials);
+            aiGenerationTaskService.markSuccess(task.getId(), "teacher-profile:" + saved.getId());
+            return TeacherProfileVO.from(saved);
+        } catch (RuntimeException exception) {
+            profile.setAnalysisStatus("FAILED");
+            profile.setSourceSummary("重新分析失败：" + exception.getMessage());
+            profile.setLastAnalyzedTime(LocalDateTime.now());
+            teacherProfileRepository.save(profile);
+            aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
+            throw exception;
+        }
     }
 
     public TeacherProfileVO update(Long profileId, TeacherProfileUpdateRequest request) {

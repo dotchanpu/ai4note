@@ -956,6 +956,9 @@
                       <button type="button" :disabled="teacherConfidenceScoring" @click="recalculateTeacherConfidence">
                         {{ teacherConfidenceScoring ? '评分中…' : '重算置信度' }}
                       </button>
+                      <button type="button" :disabled="teacherProfileReanalyzing" @click="runTeacherProfileReanalysis">
+                        {{ teacherProfileReanalyzing ? '分析中…' : '重新分析' }}
+                      </button>
                       <button type="button" @click="openTeacherProfileEditor">编辑画像</button>
                     </div>
                   </div>
@@ -2148,6 +2151,7 @@ import {
   listTeacherProfileEvidence,
   listTeacherProfiles,
   recalculateTeacherProfileConfidence,
+  reanalyzeTeacherProfile,
   updateTeacherProfile
 } from '../../api/teacher'
 import {
@@ -2197,6 +2201,7 @@ const teacherEvidenceLoading = ref(false)
 const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
 const teacherConfidenceScoring = ref(false)
+const teacherProfileReanalyzing = ref(false)
 const mockExamGenerating = ref(false)
 const sprintOutlineGenerating = ref(false)
 const reviewProfileLoading = ref(false)
@@ -2877,6 +2882,28 @@ async function recalculateTeacherConfidence() {
     ElMessage.error(error.message)
   } finally {
     teacherConfidenceScoring.value = false
+  }
+}
+
+async function runTeacherProfileReanalysis() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  teacherProfileReanalyzing.value = true
+  try {
+    const profile = await reanalyzeTeacherProfile(selectedTeacherProfile.value.id, {
+      userId: currentUser.value.id,
+      materialIds: [],
+      model: 'deepseek-v4-flash'
+    })
+    replaceItem(teacherProfiles.value, profile)
+    await selectTeacherProfile(profile)
+    await loadAiGenerationTasks()
+    ElMessage.success('教师画像已重新分析')
+  } catch (error) {
+    await loadTeacherProfiles()
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileReanalyzing.value = false
   }
 }
 

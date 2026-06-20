@@ -1,6 +1,7 @@
 package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
+import com.example.coursekb.dto.TeacherProfileReanalyzeRequest;
 import com.example.coursekb.dto.TeacherProfileUpdateRequest;
 import com.example.coursekb.service.TeacherProfileService;
 import com.example.coursekb.vo.TeacherProfileEvidenceVO;
@@ -44,6 +45,13 @@ public class TeacherProfileController {
             @PathVariable Long profileId,
             @RequestParam Long userId) {
         return teacherProfileService.listEvidence(profileId, userId);
+    }
+
+    @PostMapping("/teacher-profiles/{profileId}/reanalyze")
+    public TeacherProfileVO reanalyze(
+            @PathVariable Long profileId,
+            @Valid @RequestBody TeacherProfileReanalyzeRequest request) {
+        return teacherProfileService.reanalyze(profileId, request);
     }
 
     @PutMapping("/teacher-profiles/{profileId}")
