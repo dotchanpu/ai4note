@@ -14,6 +14,13 @@ export function replaceMaterialTags(materialId, userId, tagNames) {
   })
 }
 
+export function previewMaterialTags(materialId, userId, data = {}) {
+  return request.post(`/materials/${materialId}/tags/ai-preview`, data, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
 export function listKnowledgeItems(courseId, userId, filters = {}) {
   return request.get(`/courses/${courseId}/knowledge-items`, {
     params: { userId, ...filters }

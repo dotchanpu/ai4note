@@ -629,6 +629,31 @@
               <button type="button" :disabled="tagSaving" @click="saveSelectedMaterialTags">
                 {{ tagSaving ? '保存中…' : '保存标签' }}
               </button>
+              <button
+                type="button"
+                :disabled="tagPreviewLoading || !knowledgeForm.materialId"
+                @click="previewTags"
+              >
+                {{ tagPreviewLoading ? '提取中…' : 'AI 提取关键词' }}
+              </button>
+              <div v-if="previewedMaterialTags.length" class="tag-preview-panel">
+                <div>
+                  <strong>候选关键词</strong>
+                  <span>确认后写入资料标签</span>
+                </div>
+                <button
+                  v-for="tag in previewedMaterialTags"
+                  :key="tag"
+                  type="button"
+                  :class="{ active: selectedMaterialTags.includes(tag) }"
+                  @click="togglePreviewTag(tag)"
+                >
+                  {{ tag }}
+                </button>
+                <button type="button" class="tag-preview-apply" @click="applyPreviewTags">
+                  写入候选标签
+                </button>
+              </div>
             </div>
 
             <div class="knowledge-toolbar">
@@ -1906,6 +1931,7 @@ import {
   listCourseTags,
   listKnowledgeItems,
   listMaterialTags,
+  previewMaterialTags,
   replaceMaterialTags
 } from '../../api/knowledge'
 import {
@@ -1969,6 +1995,7 @@ const aiProviderLoading = ref(false)
 const aiProviderSaving = ref(false)
 const aiTaskLoading = ref(false)
 const tagSaving = ref(false)
+const tagPreviewLoading = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
 const exportPreviewLoading = ref(false)
@@ -2010,6 +2037,7 @@ const exportRecords = ref([])
 const exportPreview = ref(null)
 const masterySavingIds = ref([])
 const selectedMaterialTags = ref([])
+const previewedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
 const selectedGapReport = ref(null)
@@ -2349,6 +2377,7 @@ async function selectCourse(course) {
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
+  previewedMaterialTags.value = []
   knowledgeFilterType.value = null
   chapterLoading.value = true
   materialLoading.value = true
@@ -2883,6 +2912,7 @@ async function loadCourseTags() {
 }
 
 async function loadSelectedMaterialTags() {
+  previewedMaterialTags.value = []
   if (!knowledgeForm.materialId) {
     selectedMaterialTags.value = []
     return
@@ -2913,6 +2943,46 @@ async function saveSelectedMaterialTags() {
   } finally {
     tagSaving.value = false
   }
+}
+
+async function previewTags() {
+  if (!knowledgeForm.materialId) return
+  tagPreviewLoading.value = true
+  try {
+    const result = await previewMaterialTags(
+      knowledgeForm.materialId,
+      currentUser.value.id,
+      { model: 'deepseek-v4-flash' }
+    )
+    previewedMaterialTags.value = result.tags || []
+    selectedMaterialTags.value = Array.from(new Set([
+      ...selectedMaterialTags.value,
+      ...previewedMaterialTags.value
+    ]))
+    await loadAiGenerationTasks()
+    if (previewedMaterialTags.value.length === 0) {
+      ElMessage.warning('AI 未提取到有效关键词')
+    } else {
+      ElMessage.success(`已提取 ${previewedMaterialTags.value.length} 个候选关键词`)
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    tagPreviewLoading.value = false
+  }
+}
+
+function togglePreviewTag(tag) {
+  if (selectedMaterialTags.value.includes(tag)) {
+    selectedMaterialTags.value = selectedMaterialTags.value.filter(item => item !== tag)
+  } else {
+    selectedMaterialTags.value = [...selectedMaterialTags.value, tag]
+  }
+}
+
+async function applyPreviewTags() {
+  if (!knowledgeForm.materialId || previewedMaterialTags.value.length === 0) return
+  await saveSelectedMaterialTags()
 }
 
 async function generateKnowledge() {
@@ -3175,6 +3245,7 @@ function aiTaskTypeLabel(type) {
   if (type === 'PACKAGE_SUMMARY') return '知识包摘要'
   if (type === 'KNOWLEDGE_EXTRACTION') return '资料知识整理'
   if (type === 'MATERIAL_SUMMARY') return '资料摘要生成'
+  if (type === 'MATERIAL_TAG_EXTRACTION') return '资料关键词提取'
   return type || '未知任务'
 }
 
@@ -5554,7 +5625,7 @@ button {
 
 .knowledge-tags-panel {
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr) 110px;
+  grid-template-columns: 170px minmax(0, 1fr) 110px 150px;
   gap: 14px;
   align-items: center;
   margin-top: 24px;
@@ -5581,6 +5652,47 @@ button {
   color: #111;
   font-weight: 850;
   cursor: pointer;
+}
+
+.knowledge-tags-panel button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.tag-preview-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #444;
+}
+
+.tag-preview-panel > div {
+  min-width: 160px;
+  margin-right: 6px;
+}
+
+.tag-preview-panel button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: #ad93ff;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+}
+
+.tag-preview-panel button.active {
+  background: #ad93ff;
+  color: #111;
+}
+
+.tag-preview-panel .tag-preview-apply {
+  margin-left: auto;
+  border-color: #fff;
+  background: #fff;
+  color: #111;
 }
 
 .knowledge-toolbar {

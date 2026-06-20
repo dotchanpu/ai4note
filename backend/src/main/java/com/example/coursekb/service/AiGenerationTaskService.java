@@ -20,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiGenerationTaskService {
     private static final Set<String> TASK_TYPES = new HashSet<>(Arrays.asList(
             "TEACHER_PROFILE", "EXAM_MAPPING", "KNOWLEDGE_GAP", "REVIEW_GENERATION",
-            "MOCK_EXAM", "PACKAGE_SUMMARY", "KNOWLEDGE_EXTRACTION", "MATERIAL_SUMMARY"));
+            "MOCK_EXAM", "PACKAGE_SUMMARY", "KNOWLEDGE_EXTRACTION", "MATERIAL_SUMMARY",
+            "MATERIAL_TAG_EXTRACTION"));
     private static final Set<String> STATUSES = new HashSet<>(Arrays.asList(
             "PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELED"));
 
