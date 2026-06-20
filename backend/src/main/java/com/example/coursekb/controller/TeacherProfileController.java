@@ -52,4 +52,11 @@ public class TeacherProfileController {
             @Valid @RequestBody TeacherProfileUpdateRequest request) {
         return teacherProfileService.update(profileId, request);
     }
+
+    @PutMapping("/teacher-profiles/{profileId}/confidence-score")
+    public TeacherProfileVO recalculateConfidence(
+            @PathVariable Long profileId,
+            @RequestParam Long userId) {
+        return teacherProfileService.recalculateConfidence(profileId, userId);
+    }
 }

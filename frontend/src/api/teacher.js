@@ -21,3 +21,9 @@ export function listTeacherProfileEvidence(profileId, userId) {
 export function updateTeacherProfile(profileId, data) {
   return request.put(`/teacher-profiles/${profileId}`, data)
 }
+
+export function recalculateTeacherProfileConfidence(profileId, userId) {
+  return request.put(`/teacher-profiles/${profileId}/confidence-score`, null, {
+    params: { userId }
+  })
+}

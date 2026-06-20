@@ -953,6 +953,9 @@
                     </div>
                     <div class="teacher-profile-score">
                       <strong>{{ selectedTeacherProfile.confidenceScore ?? 0 }}%</strong>
+                      <button type="button" :disabled="teacherConfidenceScoring" @click="recalculateTeacherConfidence">
+                        {{ teacherConfidenceScoring ? '评分中…' : '重算置信度' }}
+                      </button>
                       <button type="button" @click="openTeacherProfileEditor">编辑画像</button>
                     </div>
                   </div>
@@ -2144,6 +2147,7 @@ import {
   analyzeTeacherProfile,
   listTeacherProfileEvidence,
   listTeacherProfiles,
+  recalculateTeacherProfileConfidence,
   updateTeacherProfile
 } from '../../api/teacher'
 import {
@@ -2192,6 +2196,7 @@ const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
 const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
+const teacherConfidenceScoring = ref(false)
 const mockExamGenerating = ref(false)
 const sprintOutlineGenerating = ref(false)
 const reviewProfileLoading = ref(false)
@@ -2854,6 +2859,24 @@ async function selectTeacherProfile(profile) {
     ElMessage.error(error.message)
   } finally {
     teacherEvidenceLoading.value = false
+  }
+}
+
+async function recalculateTeacherConfidence() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  teacherConfidenceScoring.value = true
+  try {
+    const profile = await recalculateTeacherProfileConfidence(
+      selectedTeacherProfile.value.id,
+      currentUser.value.id
+    )
+    replaceItem(teacherProfiles.value, profile)
+    selectedTeacherProfile.value = profile
+    ElMessage.success('教师画像置信度已更新')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherConfidenceScoring.value = false
   }
 }
 
@@ -6821,6 +6844,11 @@ button {
   font-size: 11px;
   font-weight: 850;
   cursor: pointer;
+}
+
+.teacher-profile-score button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .teacher-edit-panel {

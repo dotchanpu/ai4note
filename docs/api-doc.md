@@ -1136,6 +1136,14 @@ FAILED
 MANUAL_REVIEWED
 ```
 
+### 13.5 重算教师画像置信度
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/teacher-profiles/{profileId}/confidence-score`
+
+查询参数：`userId`。后端会校验画像归属，并根据画像字段完整度、证据数量、证据平均置信度、证据资料来源多样性和分析状态重新计算 `confidenceScore`。该接口不重新调用 AI，也不会修改画像正文。
+
 ## 14. AI 服务与任务
 
 ### 14.1 查询 DeepSeek 配置状态
