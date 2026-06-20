@@ -171,6 +171,33 @@
           <strong>还没有统计结果</strong>
           <p>先完成抽题并建立知识点映射，这里才会出现高频考点。</p>
         </div>
+        <div class="exam-trend-panel" v-loading="trendsLoading">
+          <div class="exam-trend-heading">
+            <strong>趋势分析</strong>
+            <span>{{ trends.length }} 项</span>
+          </div>
+          <div v-if="trends.length" class="exam-trend-list">
+            <article v-for="trend in trends.slice(0, 8)" :key="trend.knowledgeItemId" class="exam-trend-card">
+              <div class="exam-trend-top">
+                <strong>{{ trend.knowledgeTitle }}</strong>
+                <span>{{ trend.totalQuestionCount }} 题</span>
+              </div>
+              <div class="exam-trend-years">
+                <div v-for="year in trend.yearlyStats" :key="year.examYear" class="exam-trend-year">
+                  <span>{{ year.examYear }}</span>
+                  <div>
+                    <i :style="{ width: `${Math.max(8, Math.round((year.questionCount / maxTrendQuestionCount) * 100))}%` }"></i>
+                  </div>
+                  <strong>{{ year.questionCount }}</strong>
+                </div>
+              </div>
+            </article>
+          </div>
+          <div v-else class="exam-empty-card">
+            <strong>暂无趋势数据</strong>
+            <p>趋势需要带年份的真题和知识点映射。</p>
+          </div>
+        </div>
       </aside>
 
       <section class="exam-questions" v-loading="questionsLoading">
@@ -270,6 +297,7 @@ import { parsePdf } from '../../api/material'
 import {
   extractExamQuestions,
   listExamKnowledgeStats,
+  listExamKnowledgeTrends,
   listExamQuestions,
   saveExamKnowledgeMap
 } from '../../api/exam'
@@ -305,8 +333,10 @@ const emit = defineEmits(['material-parsed', 'stats-changed'])
 
 const questions = ref([])
 const stats = ref([])
+const trends = ref([])
 const questionsLoading = ref(false)
 const statsLoading = ref(false)
+const trendsLoading = ref(false)
 const extractingMaterialId = ref(null)
 const mappingSavingQuestionId = ref(null)
 const questionPage = ref(1)
@@ -330,6 +360,12 @@ const selectedExamMaterial = computed(() => {
   if (!examMaterials.value.length) return null
   return examMaterials.value.find(item => item.id === Number(filters.materialId)) || examMaterials.value[0]
 })
+const maxTrendQuestionCount = computed(() => Math.max(
+  1,
+  ...trends.value.flatMap(trend => (
+    trend.yearlyStats || []
+  ).map(year => year.questionCount || 0))
+))
 const questionPageSize = 12
 const lastQuestionFilterKey = ref('')
 
@@ -372,25 +408,29 @@ async function reloadData() {
   }
   questionsLoading.value = true
   statsLoading.value = true
+  trendsLoading.value = true
   try {
-    const [questionData, statData] = await Promise.all([
+    const [questionData, statData, trendData] = await Promise.all([
       listExamQuestions(props.selectedCourse.id, props.currentUserId, {
         ...normalizedFilters(true),
         page: questionPage.value,
         size: questionPageSize
       }),
-      listExamKnowledgeStats(props.selectedCourse.id, props.currentUserId, normalizedFilters(false))
+      listExamKnowledgeStats(props.selectedCourse.id, props.currentUserId, normalizedFilters(false)),
+      listExamKnowledgeTrends(props.selectedCourse.id, props.currentUserId, normalizedFilters(false))
     ])
     questions.value = questionData.items || []
     questionTotal.value = questionData.total || 0
     totalQuestionPages.value = questionData.totalPages || 0
     questionPage.value = questionData.page || 1
     stats.value = statData
+    trends.value = trendData
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     questionsLoading.value = false
     statsLoading.value = false
+    trendsLoading.value = false
   }
 }
 
@@ -544,6 +584,7 @@ function resetState() {
   totalQuestionPages.value = 0
   questionPage.value = 1
   stats.value = []
+  trends.value = []
   filters.year = ''
   filters.chapterId = null
   filters.questionType = null
@@ -858,6 +899,78 @@ function resetState() {
   gap: 10px;
   margin-top: 14px;
   font-size: 13px;
+}
+
+.exam-trend-panel {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #ddd;
+}
+
+.exam-trend-heading,
+.exam-trend-top,
+.exam-trend-year {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.exam-trend-heading strong {
+  font-size: 20px;
+}
+
+.exam-trend-heading span,
+.exam-trend-top span,
+.exam-trend-year span,
+.exam-trend-year strong {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.exam-trend-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.exam-trend-card {
+  padding: 14px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.exam-trend-top strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exam-trend-years {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.exam-trend-year {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 24px;
+}
+
+.exam-trend-year div {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid #111;
+  background: #f5f3ef;
+}
+
+.exam-trend-year i {
+  display: block;
+  height: 100%;
+  background: #ff3151;
 }
 
 .exam-question-list {

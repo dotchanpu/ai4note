@@ -17,6 +17,7 @@ import com.example.coursekb.mapper.MaterialFileRepository;
 import com.example.coursekb.mapper.MaterialRepository;
 import com.example.coursekb.mapper.TextChunkRepository;
 import com.example.coursekb.vo.ExamKnowledgeStatVO;
+import com.example.coursekb.vo.ExamKnowledgeTrendVO;
 import com.example.coursekb.vo.ExamQuestionPageVO;
 import com.example.coursekb.vo.ExamQuestionKnowledgeMapVO;
 import com.example.coursekb.vo.ExamQuestionVO;
@@ -265,6 +266,89 @@ public class ExamQuestionService {
                         .reversed()
                         .thenComparing(ExamKnowledgeStatVO::getTotalScore, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(ExamKnowledgeStatVO::getKnowledgeItemId))
+                .collect(Collectors.toList());
+    }
+
+    public List<ExamKnowledgeTrendVO> listKnowledgeTrends(
+            Long courseId,
+            Long userId,
+            Long chapterId,
+            String questionType) {
+        courseService.getOwnedCourse(courseId, userId);
+        List<ExamQuestion> filteredQuestions = filterQuestions(courseId, null, chapterId, questionType, null)
+                .stream()
+                .filter(question -> question.getExamYear() != null)
+                .collect(Collectors.toList());
+        if (filteredQuestions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, ExamQuestion> questionById = filteredQuestions.stream()
+                .collect(Collectors.toMap(ExamQuestion::getId, Function.identity()));
+        List<ExamQuestionKnowledgeMap> mappings = examQuestionKnowledgeMapRepository
+                .findByExamQuestionIdInOrderByIdAsc(questionById.keySet());
+        if (mappings.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, KnowledgeItem> knowledgeById = knowledgeItemRepository.findAllById(
+                        mappings.stream()
+                                .map(ExamQuestionKnowledgeMap::getKnowledgeItemId)
+                                .collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(KnowledgeItem::getId, Function.identity()));
+        Map<Long, String> chapterTitleById = chapterRepository.findAllById(
+                        knowledgeById.values().stream()
+                                .map(KnowledgeItem::getChapterId)
+                                .filter(Objects::nonNull)
+                                .collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(Chapter::getId, Chapter::getChapterTitle));
+
+        Map<Long, TrendAccumulator> trends = new LinkedHashMap<>();
+        for (ExamQuestionKnowledgeMap mapping : mappings) {
+            ExamQuestion question = questionById.get(mapping.getExamQuestionId());
+            KnowledgeItem knowledgeItem = knowledgeById.get(mapping.getKnowledgeItemId());
+            if (question == null || knowledgeItem == null || question.getExamYear() == null) {
+                continue;
+            }
+            TrendAccumulator accumulator = trends.computeIfAbsent(knowledgeItem.getId(), ignored -> {
+                TrendAccumulator created = new TrendAccumulator();
+                created.knowledgeItem = knowledgeItem;
+                created.chapterTitle = knowledgeItem.getChapterId() == null
+                        ? null
+                        : chapterTitleById.get(knowledgeItem.getChapterId());
+                return created;
+            });
+            YearAccumulator year = accumulator.yearly.computeIfAbsent(question.getExamYear(), ignored -> new YearAccumulator());
+            year.questionCount++;
+            year.totalScore = year.totalScore.add(question.getScore() == null ? BigDecimal.ZERO : question.getScore());
+            accumulator.totalQuestionCount++;
+            accumulator.totalScore = accumulator.totalScore.add(question.getScore() == null ? BigDecimal.ZERO : question.getScore());
+        }
+
+        return trends.values().stream()
+                .map(accumulator -> {
+                    ExamKnowledgeTrendVO result = new ExamKnowledgeTrendVO();
+                    result.setKnowledgeItemId(accumulator.knowledgeItem.getId());
+                    result.setKnowledgeTitle(accumulator.knowledgeItem.getTitle());
+                    result.setKnowledgeItemType(accumulator.knowledgeItem.getItemType());
+                    result.setChapterTitle(accumulator.chapterTitle);
+                    result.setTotalQuestionCount(accumulator.totalQuestionCount);
+                    result.setTotalScore(accumulator.totalScore);
+                    result.setYearlyStats(accumulator.yearly.entrySet().stream()
+                            .sorted(Map.Entry.<Integer, YearAccumulator>comparingByKey().reversed())
+                            .map(entry -> new ExamKnowledgeTrendVO.YearStat(
+                                    entry.getKey(),
+                                    entry.getValue().questionCount,
+                                    entry.getValue().totalScore))
+                            .collect(Collectors.toList()));
+                    return result;
+                })
+                .sorted(Comparator.comparingLong(ExamKnowledgeTrendVO::getTotalQuestionCount)
+                        .reversed()
+                        .thenComparing(ExamKnowledgeTrendVO::getTotalScore, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ExamKnowledgeTrendVO::getKnowledgeItemId))
                 .collect(Collectors.toList());
     }
 
@@ -960,6 +1044,19 @@ public class ExamQuestionService {
         private long questionCount;
         private BigDecimal totalScore;
         private Integer latestExamYear;
+    }
+
+    private static class TrendAccumulator {
+        private KnowledgeItem knowledgeItem;
+        private String chapterTitle;
+        private long totalQuestionCount;
+        private BigDecimal totalScore = BigDecimal.ZERO;
+        private Map<Integer, YearAccumulator> yearly = new LinkedHashMap<>();
+    }
+
+    private static class YearAccumulator {
+        private long questionCount;
+        private BigDecimal totalScore = BigDecimal.ZERO;
     }
 
     private static class QuestionNoSortKey {

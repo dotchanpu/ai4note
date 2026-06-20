@@ -3,6 +3,7 @@ package com.example.coursekb.controller;
 import com.example.coursekb.dto.ExamKnowledgeMapRequest;
 import com.example.coursekb.service.ExamQuestionService;
 import com.example.coursekb.vo.ExamKnowledgeStatVO;
+import com.example.coursekb.vo.ExamKnowledgeTrendVO;
 import com.example.coursekb.vo.ExamQuestionKnowledgeMapVO;
 import com.example.coursekb.vo.ExamQuestionPageVO;
 import com.example.coursekb.vo.ExamQuestionVO;
@@ -63,5 +64,14 @@ public class ExamQuestionController {
             @RequestParam(required = false) String questionType) {
         return examQuestionService.listKnowledgeStats(
                 courseId, userId, year, chapterId, questionType);
+    }
+
+    @GetMapping("/courses/{courseId}/exam-knowledge-trends")
+    public List<ExamKnowledgeTrendVO> listKnowledgeTrends(
+            @PathVariable Long courseId,
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long chapterId,
+            @RequestParam(required = false) String questionType) {
+        return examQuestionService.listKnowledgeTrends(courseId, userId, chapterId, questionType);
     }
 }
