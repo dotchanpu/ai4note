@@ -2,7 +2,8 @@
 
 ## Project Workflow
 
-- After every code or documentation change, create a Git commit and push it to the remote branch.
+- After every code or documentation change, create a local Git commit.
+- Do not push to `origin` automatically. Push only when the user explicitly asks for it or when the active goal explicitly requires pushing.
 - For each large feature module, create a dedicated feature branch before implementation.
 - After implementing a large module, run the relevant verification commands.
 - Merge a feature branch into `main` only after verification passes.
