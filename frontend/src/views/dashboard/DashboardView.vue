@@ -776,6 +776,35 @@
               </button>
             </div>
 
+            <div v-loading="prerequisiteGapLoading" class="prerequisite-hint-panel">
+              <div class="prerequisite-hint-heading">
+                <div>
+                  <span>前置课程提示</span>
+                  <strong>{{ prerequisiteGapHints.length }}</strong>
+                </div>
+                <button type="button" :disabled="prerequisiteGapLoading" @click="loadPrerequisiteGapHints">
+                  {{ prerequisiteGapLoading ? '检查中…' : '检查前置缺口' }}
+                </button>
+              </div>
+              <div v-if="prerequisiteGapHints.length > 0" class="prerequisite-hint-list">
+                <article
+                  v-for="item in prerequisiteGapHints.slice(0, 6)"
+                  :key="`${item.sourceCourseId}-${item.knowledgeItemId}`"
+                >
+                  <div>
+                    <span>{{ item.sourceCourseName }}</span>
+                    <strong>优先级 {{ item.severityLevel }}</strong>
+                  </div>
+                  <h3>{{ item.knowledgeTitle }}</h3>
+                  <p>{{ item.reason }}</p>
+                  <small>{{ item.suggestion }}</small>
+                </article>
+              </div>
+              <div v-else class="prerequisite-hint-empty">
+                {{ prerequisiteRelationCount > 0 ? '暂无明显前置课程缺口' : '先维护前置课程关系后再检查' }}
+              </div>
+            </div>
+
             <div class="gap-layout">
               <aside v-loading="gapLoading" class="gap-report-list">
                 <div class="gap-report-heading">
@@ -2061,7 +2090,8 @@ import {
 import {
   createKnowledgeGapReport,
   listKnowledgeGapItems,
-  listKnowledgeGapReports
+  listKnowledgeGapReports,
+  listPrerequisiteGapHints
 } from '../../api/gap'
 import {
   analyzeTeacherProfile,
@@ -2105,6 +2135,7 @@ const knowledgeGenerating = ref(false)
 const gapLoading = ref(false)
 const gapGenerating = ref(false)
 const gapItemLoading = ref(false)
+const prerequisiteGapLoading = ref(false)
 const teacherProfileLoading = ref(false)
 const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
@@ -2148,6 +2179,7 @@ const searchRecords = ref([])
 const knowledgeItems = ref([])
 const gapReports = ref([])
 const gapItems = ref([])
+const prerequisiteGapHints = ref([])
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const mockExamResult = ref(null)
@@ -2304,6 +2336,10 @@ const gapStats = computed(() => ({
   severe: gapItems.value.filter(item => item.severityLevel >= 4).length,
   prerequisite: gapItems.value.filter(item => item.relatedCourseRelationId).length
 }))
+
+const prerequisiteRelationCount = computed(() => (
+  courseRelations.value.filter(item => item.relationType === 'PREREQUISITE').length
+))
 
 const teacherProfileMaterials = computed(() => materials.value.filter(material => (
   material.parsedChunkCount > 0 || material.materialType === 'EXAM'
@@ -2530,6 +2566,7 @@ async function selectCourse(course) {
       loadSearchRecords(),
       loadExportData(),
       loadGapReports(),
+      loadPrerequisiteGapHints(),
       loadTeacherProfiles(),
       loadReviewProfiles(),
       loadAiProviders(),
@@ -2597,6 +2634,7 @@ async function saveRelation() {
       }
     )
     courseRelations.value.push(relation)
+    await loadPrerequisiteGapHints()
     resetRelationForm()
     ElMessage.success('课程关系已添加')
   } catch (error) {
@@ -2610,6 +2648,7 @@ async function removeRelation(relation) {
   try {
     await deleteCourseRelation(relation.id, currentUser.value.id)
     courseRelations.value = courseRelations.value.filter(item => item.id !== relation.id)
+    await loadPrerequisiteGapHints()
     ElMessage.success('课程关系已删除')
   } catch (error) {
     ElMessage.error(error.message)
@@ -2651,6 +2690,21 @@ async function loadGapReports() {
     ElMessage.error(error.message)
   } finally {
     gapLoading.value = false
+  }
+}
+
+async function loadPrerequisiteGapHints() {
+  if (!selectedCourse.value || !currentUser.value) return
+  prerequisiteGapLoading.value = true
+  try {
+    prerequisiteGapHints.value = await listPrerequisiteGapHints(
+      selectedCourse.value.id,
+      currentUser.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    prerequisiteGapLoading.value = false
   }
 }
 
@@ -3293,6 +3347,7 @@ function resetGapForm() {
 function clearGapState() {
   gapReports.value = []
   gapItems.value = []
+  prerequisiteGapHints.value = []
   selectedGapReport.value = null
   resetGapForm()
 }
@@ -6189,6 +6244,105 @@ button {
   cursor: wait;
 }
 
+.prerequisite-hint-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #0de0c0;
+}
+
+.prerequisite-hint-heading,
+.prerequisite-hint-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.prerequisite-hint-heading span,
+.prerequisite-hint-list span {
+  display: block;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.prerequisite-hint-heading strong {
+  color: #111;
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.prerequisite-hint-heading button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #0de0c0;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.prerequisite-hint-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.prerequisite-hint-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prerequisite-hint-list article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #f5f3ef;
+}
+
+.prerequisite-hint-list strong {
+  flex: 0 0 auto;
+  color: #ff3151;
+  font-size: 11px;
+}
+
+.prerequisite-hint-list h3 {
+  margin: 12px 0 8px;
+  overflow: hidden;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prerequisite-hint-list p,
+.prerequisite-hint-list small {
+  display: block;
+  margin: 0;
+  color: #444;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.prerequisite-hint-list small {
+  margin-top: 8px;
+  color: #777;
+}
+
+.prerequisite-hint-empty {
+  min-height: 92px;
+  display: grid;
+  place-content: center;
+  border: 1px dashed #777;
+  color: #666;
+  font-size: 13px;
+}
+
 .gap-layout {
   display: grid;
   grid-template-columns: 290px minmax(0, 1fr);
@@ -8910,6 +9064,7 @@ button {
   .knowledge-tags-panel,
   .knowledge-mastery-row,
   .gap-generator,
+  .prerequisite-hint-list,
   .gap-layout,
   .gap-summary,
   .gap-item-grid,

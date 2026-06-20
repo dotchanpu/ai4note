@@ -23,3 +23,9 @@ export function listKnowledgeGapItems(reportId, userId) {
     params: { userId }
   })
 }
+
+export function listPrerequisiteGapHints(courseId, userId) {
+  return request.get(`/courses/${courseId}/prerequisite-gap-hints`, {
+    params: { userId }
+  })
+}

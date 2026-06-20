@@ -37,6 +37,13 @@ public class KnowledgeGapController {
         return knowledgeGapService.generate(courseId, request);
     }
 
+    @GetMapping("/courses/{courseId}/prerequisite-gap-hints")
+    public List<KnowledgeGapItemVO> listPrerequisiteHints(
+            @PathVariable Long courseId,
+            @RequestParam Long userId) {
+        return knowledgeGapService.listPrerequisiteHints(courseId, userId);
+    }
+
     @GetMapping("/knowledge-gap-reports/{reportId}")
     public KnowledgeGapReportVO getReport(
             @PathVariable Long reportId,
