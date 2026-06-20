@@ -566,7 +566,7 @@
             <div class="knowledge-toolbar">
               <div>
                 <strong>{{ knowledgeItems.length }}</strong>
-                <span>knowledge items</span>
+                <span>知识条目</span>
               </div>
               <el-select
                 v-model="knowledgeFilterType"
@@ -600,6 +600,49 @@
                   <span>{{ item.materialTitle || '人工整理' }}</span>
                   <span v-if="item.sourcePage">第 {{ item.sourcePage }} 页</span>
                   <span>{{ item.chapterTitle || '未关联章节' }}</span>
+                </div>
+                <div class="knowledge-mastery">
+                  <div class="knowledge-mastery-row">
+                    <label>
+                      <span>掌握状态</span>
+                      <el-select v-model="item.masteryStatus" placeholder="选择状态">
+                        <el-option
+                          v-for="option in masteryStatusOptions"
+                          :key="option.status"
+                          :label="option.label"
+                          :value="option.status"
+                        />
+                      </el-select>
+                    </label>
+                    <label>
+                      <span>掌握分数</span>
+                      <el-input-number
+                        v-model="item.masteryScore"
+                        :min="0"
+                        :max="100"
+                        :step="5"
+                        controls-position="right"
+                      />
+                    </label>
+                  </div>
+                  <el-input
+                    v-model="item.masteryNote"
+                    type="textarea"
+                    :rows="2"
+                    maxlength="300"
+                    show-word-limit
+                    placeholder="记录薄弱点、复习提醒或解题问题"
+                  />
+                  <div class="knowledge-mastery-actions">
+                    <span>最近复习：{{ formatReviewTime(item.lastReviewTime) }}</span>
+                    <button
+                      type="button"
+                      :disabled="isMasterySaving(item.id)"
+                      @click="saveKnowledgeMastery(item)"
+                    >
+                      {{ isMasterySaving(item.id) ? '保存中…' : '保存掌握状态' }}
+                    </button>
+                  </div>
                 </div>
                 <button type="button" class="danger-text" @click="confirmKnowledgeDeletion(item)">
                   删除条目
@@ -1082,6 +1125,7 @@ import { searchMaterials } from '../../api/search'
 import {
   deleteKnowledgeItem,
   generateKnowledgeItems,
+  updateKnowledgeMastery,
   listCourseTags,
   listKnowledgeItems,
   listMaterialTags,
@@ -1133,6 +1177,7 @@ const knowledgeItems = ref([])
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
+const masterySavingIds = ref([])
 const selectedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
@@ -1179,6 +1224,14 @@ const knowledgeTypeOptions = [
   { type: 'METHOD', label: '方法' },
   { type: 'EXAMPLE', label: '例子' },
   { type: 'WARNING', label: '易错点' }
+]
+
+const masteryStatusOptions = [
+  { status: 'UNKNOWN', label: '未评估' },
+  { status: 'LEARNING', label: '学习中' },
+  { status: 'MASTERED', label: '已掌握' },
+  { status: 'WEAK', label: '薄弱' },
+  { status: 'NEED_REVIEW', label: '待复习' }
 ]
 
 const relationTypeOptions = [
@@ -1570,6 +1623,44 @@ async function generateKnowledge() {
   } finally {
     knowledgeGenerating.value = false
   }
+}
+
+async function saveKnowledgeMastery(item) {
+  if (!currentUser.value || !item?.id) return
+  if (item.masteryScore !== null && item.masteryScore !== undefined) {
+    const score = Number(item.masteryScore)
+    if (Number.isNaN(score) || score < 0 || score > 100) {
+      ElMessage.warning('掌握分数必须在 0 到 100 之间')
+      return
+    }
+  }
+  masterySavingIds.value = [...new Set([...masterySavingIds.value, item.id])]
+  try {
+    const status = await updateKnowledgeMastery(item.id, {
+      userId: currentUser.value.id,
+      masteryStatus: item.masteryStatus || 'UNKNOWN',
+      masteryScore: item.masteryScore ?? null,
+      note: item.masteryNote?.trim() || null
+    })
+    item.masteryStatus = status.masteryStatus
+    item.masteryScore = status.masteryScore
+    item.masteryNote = status.note
+    item.lastReviewTime = status.lastReviewTime
+    item.masteryUpdateTime = status.updateTime
+    ElMessage.success('掌握状态已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    masterySavingIds.value = masterySavingIds.value.filter(id => id !== item.id)
+  }
+}
+
+function isMasterySaving(itemId) {
+  return masterySavingIds.value.includes(itemId)
+}
+
+function formatReviewTime(value) {
+  return value ? new Date(value).toLocaleString() : '尚未复习'
 }
 
 function knowledgeTypeLabel(type) {
@@ -3860,6 +3951,74 @@ button {
   font-size: 10px;
 }
 
+.knowledge-mastery {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #444;
+  background: #111;
+}
+
+.knowledge-mastery-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 10px;
+}
+
+.knowledge-mastery label {
+  min-width: 0;
+}
+
+.knowledge-mastery label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #aaa;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+:deep(.knowledge-mastery .el-select),
+:deep(.knowledge-mastery .el-input-number) {
+  width: 100%;
+}
+
+:deep(.knowledge-mastery .el-select__wrapper),
+:deep(.knowledge-mastery .el-input__wrapper),
+:deep(.knowledge-mastery .el-textarea__inner) {
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.knowledge-mastery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.knowledge-mastery-actions span {
+  color: #999;
+  font-size: 10px;
+}
+
+.knowledge-mastery-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #111;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.knowledge-mastery-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .knowledge-card > button {
   display: block;
   margin: 16px 0 0 auto;
@@ -4891,6 +5050,7 @@ button {
   .search-filters,
   .knowledge-generator-main,
   .knowledge-tags-panel,
+  .knowledge-mastery-row,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
@@ -4911,6 +5071,7 @@ button {
   }
 
   .export-options,
+  .knowledge-mastery-actions,
   .export-record-heading,
   .export-record-card {
     display: grid;
