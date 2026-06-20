@@ -9,3 +9,23 @@ export function chatWithAi(data) {
     timeout: 130000
   })
 }
+
+export function listAiProviders(userId) {
+  return request.get('/ai/providers', {
+    params: { userId }
+  })
+}
+
+export function createAiProvider(data) {
+  return request.post('/ai/providers', data)
+}
+
+export function updateAiProvider(configId, data) {
+  return request.put(`/ai/providers/${configId}`, data)
+}
+
+export function deleteAiProvider(configId, userId) {
+  return request.delete(`/ai/providers/${configId}`, {
+    params: { userId }
+  })
+}

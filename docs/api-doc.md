@@ -1013,13 +1013,50 @@ MANUAL_REVIEWED
 
 ### 14.3 新建 AI 服务配置
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/ai/providers`
 
-后续可将多供应商配置保存到 `ai_provider_config`。数据库只保存 API Key 的环境变量别名，不保存明文密钥。
+请求体示例：
 
-### 14.4 创建个性化复习配置
+```json
+{
+  "userId": 1,
+  "providerName": "DeepSeek",
+  "baseUrl": "https://api.deepseek.com",
+  "modelName": "deepseek-v4-flash",
+  "apiKeyAlias": "DEEPSEEK_API_KEY",
+  "enabled": true
+}
+```
+
+数据库只保存 API Key 的环境变量别名，不保存明文密钥。`apiKeyAlias` 必须是环境变量名格式，例如 `DEEPSEEK_API_KEY`。
+
+### 14.4 查询 AI 服务配置
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/ai/providers`
+
+查询参数：`userId`。
+
+### 14.5 修改 AI 服务配置
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/ai/providers/{configId}`
+
+请求体同创建接口。后端会校验配置归属。
+
+### 14.6 删除 AI 服务配置
+
+- 状态：已实现
+- 方法：`DELETE`
+- 路径：`/api/ai/providers/{configId}`
+
+查询参数：`userId`。
+
+### 14.7 创建个性化复习配置
 
 - 状态：已实现
 - 方法：`POST`
@@ -1047,7 +1084,7 @@ MANUAL_REVIEWED
 - `outputType`：`REVIEW_NOTE`、`OUTLINE`、`FLASHCARDS`、`MOCK_EXAM`、`CHECKLIST`
 - `teacherProfileId` 可为空；传入时后端会校验教师画像属于当前用户和课程。
 
-### 14.5 查询个性化复习配置
+### 14.8 查询个性化复习配置
 
 - 状态：已实现
 - 方法：`GET`
@@ -1055,7 +1092,7 @@ MANUAL_REVIEWED
 
 查询参数：`userId`、`courseId`。返回该课程的复习生成配置列表。
 
-### 14.6 修改个性化复习配置
+### 14.9 修改个性化复习配置
 
 - 状态：已实现
 - 方法：`PUT`
@@ -1063,7 +1100,7 @@ MANUAL_REVIEWED
 
 请求体同创建接口。后端会校验配置归属和课程归属。
 
-### 14.7 删除个性化复习配置
+### 14.10 删除个性化复习配置
 
 - 状态：已实现
 - 方法：`DELETE`

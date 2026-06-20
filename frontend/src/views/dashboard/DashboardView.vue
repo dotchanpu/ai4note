@@ -1049,6 +1049,91 @@
           </section>
 
           <section
+            id="ai-config"
+            class="ai-config-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'ai-config' }"
+          >
+            <div class="ai-config-heading">
+              <div>
+                <p class="eyebrow">AI 配置</p>
+                <h2>管理模型供应商<span>.</span></h2>
+              </div>
+              <p>保存供应商、Base URL、模型名称和 API Key 环境变量别名。系统不会保存明文 API Key。</p>
+            </div>
+
+            <div class="ai-config-status">
+              <div>
+                <span>默认 DeepSeek</span>
+                <strong>{{ aiDefaultStatus?.configured ? '已配置' : '未配置' }}</strong>
+              </div>
+              <div>
+                <span>默认模型</span>
+                <strong>{{ aiDefaultStatus?.defaultModel || '未读取' }}</strong>
+              </div>
+              <div>
+                <span>配置数量</span>
+                <strong>{{ aiProviders.length }}</strong>
+              </div>
+            </div>
+
+            <div class="ai-config-layout">
+              <form class="ai-provider-form" @submit.prevent="saveAiProvider">
+                <label>
+                  <span>供应商名称</span>
+                  <el-input v-model="aiProviderForm.providerName" maxlength="64" />
+                </label>
+                <label>
+                  <span>Base URL</span>
+                  <el-input v-model="aiProviderForm.baseUrl" maxlength="255" />
+                </label>
+                <label>
+                  <span>模型名称</span>
+                  <el-input v-model="aiProviderForm.modelName" maxlength="128" />
+                </label>
+                <label>
+                  <span>API Key 环境变量别名</span>
+                  <el-input v-model="aiProviderForm.apiKeyAlias" maxlength="128" placeholder="例如：DEEPSEEK_API_KEY" />
+                </label>
+                <label class="ai-provider-switch">
+                  <el-switch v-model="aiProviderForm.enabled" />
+                  <span>启用配置</span>
+                </label>
+                <p>这里只保存环境变量名，不保存 API Key 明文。</p>
+                <div class="ai-provider-actions">
+                  <button v-if="editingAiProviderId" type="button" @click="resetAiProviderForm">
+                    取消编辑
+                  </button>
+                  <button type="submit" :disabled="aiProviderSaving">
+                    {{ aiProviderSaving ? '保存中…' : editingAiProviderId ? '保存修改' : '创建配置' }}
+                  </button>
+                </div>
+              </form>
+
+              <div v-loading="aiProviderLoading" class="ai-provider-list">
+                <article v-for="config in aiProviders" :key="config.id" class="ai-provider-card">
+                  <div class="ai-provider-card-top">
+                    <span>{{ config.enabled ? '已启用' : '已停用' }}</span>
+                    <strong>{{ config.providerName }}</strong>
+                  </div>
+                  <h3>{{ config.modelName }}</h3>
+                  <p>{{ config.baseUrl }}</p>
+                  <div class="ai-provider-meta">
+                    <span>{{ config.apiKeyAlias || '未设置 Key 别名' }}</span>
+                  </div>
+                  <div class="ai-provider-card-actions">
+                    <button type="button" @click="editAiProvider(config)">编辑</button>
+                    <button type="button" @click="removeAiProvider(config)">删除</button>
+                  </div>
+                </article>
+                <div v-if="!aiProviderLoading && aiProviders.length === 0" class="ai-provider-empty">
+                  <strong>还没有自定义 AI 配置。</strong>
+                  <p>默认 DeepSeek 环境变量配置仍然可用。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="exam"
             class="exam-section scroll-panel"
             :class="{ 'section-active': activeSection === 'exam' }"
@@ -1547,6 +1632,13 @@ import {
   listReviewProfiles,
   updateReviewProfile
 } from '../../api/review'
+import {
+  createAiProvider,
+  deleteAiProvider,
+  getAiStatus,
+  listAiProviders,
+  updateAiProvider
+} from '../../api/ai'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -1570,6 +1662,8 @@ const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
 const reviewProfileLoading = ref(false)
 const reviewProfileSaving = ref(false)
+const aiProviderLoading = ref(false)
+const aiProviderSaving = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1599,6 +1693,8 @@ const gapItems = ref([])
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const reviewProfiles = ref([])
+const aiProviders = ref([])
+const aiDefaultStatus = ref(null)
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
@@ -1609,6 +1705,7 @@ const selectedCourse = ref(null)
 const selectedGapReport = ref(null)
 const selectedTeacherProfile = ref(null)
 const editingReviewProfileId = ref(null)
+const editingAiProviderId = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
@@ -1626,6 +1723,7 @@ const pageSections = [
   { id: 'gaps', label: '缺口', title: '知识缺口' },
   { id: 'teacher', label: '画像', title: '教师画像' },
   { id: 'review', label: '复习', title: '复习配置' },
+  { id: 'ai-config', label: 'AI', title: 'AI 配置' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
@@ -1813,6 +1911,14 @@ const reviewProfileForm = reactive({
   customRequirement: ''
 })
 
+const aiProviderForm = reactive({
+  providerName: 'DeepSeek',
+  baseUrl: 'https://api.deepseek.com',
+  modelName: 'deepseek-v4-flash',
+  apiKeyAlias: 'DEEPSEEK_API_KEY',
+  enabled: true
+})
+
 const exportForm = reactive({
   exportName: '',
   templateId: null,
@@ -1878,6 +1984,7 @@ async function loadCourses() {
       clearGapState()
       clearTeacherProfileState()
       clearReviewProfileState()
+      clearAiProviderState()
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1894,6 +2001,7 @@ async function selectCourse(course) {
   resetGapForm()
   resetTeacherProfileForm()
   resetReviewProfileForm()
+  resetAiProviderForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1916,7 +2024,8 @@ async function selectCourse(course) {
       loadExportData(),
       loadGapReports(),
       loadTeacherProfiles(),
-      loadReviewProfiles()
+      loadReviewProfiles(),
+      loadAiProviders()
     ])
   } catch (error) {
     ElMessage.error(error.message)
@@ -2168,6 +2277,78 @@ async function removeReviewProfile(profile) {
       resetReviewProfileForm()
     }
     ElMessage.success('复习配置已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function loadAiProviders() {
+  if (!currentUser.value) return
+  aiProviderLoading.value = true
+  try {
+    const [status, providers] = await Promise.all([
+      getAiStatus(),
+      listAiProviders(currentUser.value.id)
+    ])
+    aiDefaultStatus.value = status
+    aiProviders.value = providers
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiProviderLoading.value = false
+  }
+}
+
+async function saveAiProvider() {
+  if (!currentUser.value) return
+  if (!aiProviderForm.providerName.trim() || !aiProviderForm.baseUrl.trim() || !aiProviderForm.modelName.trim()) {
+    ElMessage.warning('请填写供应商名称、Base URL 和模型名称')
+    return
+  }
+  aiProviderSaving.value = true
+  try {
+    const payload = {
+      userId: currentUser.value.id,
+      providerName: aiProviderForm.providerName.trim(),
+      baseUrl: aiProviderForm.baseUrl.trim(),
+      modelName: aiProviderForm.modelName.trim(),
+      apiKeyAlias: aiProviderForm.apiKeyAlias.trim() || null,
+      enabled: aiProviderForm.enabled
+    }
+    const saved = editingAiProviderId.value
+      ? await updateAiProvider(editingAiProviderId.value, payload)
+      : await createAiProvider(payload)
+    if (editingAiProviderId.value) {
+      replaceItem(aiProviders.value, saved)
+    } else {
+      aiProviders.value.unshift(saved)
+    }
+    resetAiProviderForm()
+    ElMessage.success('AI 配置已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiProviderSaving.value = false
+  }
+}
+
+function editAiProvider(config) {
+  editingAiProviderId.value = config.id
+  aiProviderForm.providerName = config.providerName || ''
+  aiProviderForm.baseUrl = config.baseUrl || ''
+  aiProviderForm.modelName = config.modelName || ''
+  aiProviderForm.apiKeyAlias = config.apiKeyAlias || ''
+  aiProviderForm.enabled = config.enabled !== false
+}
+
+async function removeAiProvider(config) {
+  try {
+    await deleteAiProvider(config.id, currentUser.value.id)
+    aiProviders.value = aiProviders.value.filter(item => item.id !== config.id)
+    if (editingAiProviderId.value === config.id) {
+      resetAiProviderForm()
+    }
+    ElMessage.success('AI 配置已删除')
   } catch (error) {
     ElMessage.error(error.message)
   }
@@ -2473,6 +2654,21 @@ function resetReviewProfileForm() {
 function clearReviewProfileState() {
   reviewProfiles.value = []
   resetReviewProfileForm()
+}
+
+function resetAiProviderForm() {
+  editingAiProviderId.value = null
+  aiProviderForm.providerName = 'DeepSeek'
+  aiProviderForm.baseUrl = 'https://api.deepseek.com'
+  aiProviderForm.modelName = 'deepseek-v4-flash'
+  aiProviderForm.apiKeyAlias = 'DEEPSEEK_API_KEY'
+  aiProviderForm.enabled = true
+}
+
+function clearAiProviderState() {
+  aiProviders.value = []
+  aiDefaultStatus.value = null
+  resetAiProviderForm()
 }
 
 function resetExportForm() {
@@ -2851,6 +3047,7 @@ async function removeCourse(courseId) {
       clearGapState()
       clearTeacherProfileState()
       clearReviewProfileState()
+      clearAiProviderState()
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -2902,6 +3099,7 @@ function logout() {
   clearGapState()
   clearTeacherProfileState()
   clearReviewProfileState()
+  clearAiProviderState()
 }
 
 function openCourseCreator() {
@@ -5741,6 +5939,236 @@ button {
   font-size: 12px;
 }
 
+.ai-config-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #111;
+}
+
+.ai-config-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.ai-config-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.ai-config-heading h2 span {
+  color: #ad93ff;
+}
+
+.ai-config-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.ai-config-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 44px;
+}
+
+.ai-config-status > div {
+  padding: 18px;
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.ai-config-status span,
+.ai-config-status strong {
+  display: block;
+}
+
+.ai-config-status span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-config-status strong {
+  margin-top: 8px;
+  overflow: hidden;
+  color: #ad93ff;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-config-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.4fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 34px;
+}
+
+.ai-provider-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid #555;
+  background: #181818;
+  box-shadow: 8px 8px 0 #ad93ff;
+}
+
+.ai-provider-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.ai-provider-form .el-input) {
+  width: 100%;
+}
+
+:deep(.ai-provider-form .el-input__wrapper) {
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.ai-provider-switch {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #555;
+  font-weight: 850;
+}
+
+.ai-provider-form > p {
+  margin: 0;
+  color: #999;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ai-provider-actions,
+.ai-provider-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ai-provider-actions button,
+.ai-provider-card-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ai-provider-actions button:last-child {
+  background: #ad93ff;
+  color: #111;
+}
+
+.ai-provider-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-provider-list {
+  min-height: 380px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.ai-provider-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.ai-provider-card-top,
+.ai-provider-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-provider-card-top {
+  justify-content: space-between;
+}
+
+.ai-provider-card-top span,
+.ai-provider-meta span {
+  padding: 4px 8px;
+  border: 1px solid #ad93ff;
+  color: #ad93ff;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.ai-provider-card h3 {
+  margin: 16px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-provider-card p {
+  margin: 0 0 14px;
+  overflow: hidden;
+  color: #ccc;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-provider-card-actions {
+  margin-top: 16px;
+}
+
+.ai-provider-card-actions button:last-child {
+  color: #ff3151;
+}
+
+.ai-provider-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.ai-provider-empty strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.ai-provider-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .export-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -6656,6 +7084,7 @@ button {
   .gap-section,
   .teacher-section,
   .review-section,
+  .ai-config-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -6702,6 +7131,7 @@ button {
   .gap-heading,
   .teacher-heading,
   .review-heading,
+  .ai-config-heading,
   .export-heading {
     display: block;
   }
@@ -6744,6 +7174,10 @@ button {
     margin-top: 24px;
   }
 
+  .ai-config-heading > p {
+    margin-top: 24px;
+  }
+
   .relation-heading > p {
     margin-top: 24px;
   }
@@ -6768,6 +7202,9 @@ button {
   .teacher-profile-grid,
   .review-layout,
   .review-profile-list,
+  .ai-config-status,
+  .ai-config-layout,
+  .ai-provider-list,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
@@ -6791,6 +7228,7 @@ button {
   .knowledge-mastery-actions,
   .teacher-edit-actions,
   .review-form-actions,
+  .ai-provider-actions,
   .export-record-heading,
   .export-record-card {
     display: grid;
