@@ -20,6 +20,7 @@ import com.example.coursekb.mapper.MaterialFileRepository;
 import com.example.coursekb.mapper.MaterialRepository;
 import com.example.coursekb.mapper.TextChunkRepository;
 import com.example.coursekb.vo.ExamKnowledgeStatVO;
+import com.example.coursekb.vo.ExportPreviewVO;
 import com.example.coursekb.vo.ExportRecordVO;
 import com.example.coursekb.vo.ExportTemplateVO;
 import java.io.IOException;
@@ -136,6 +137,17 @@ public class ExportService {
         return ExportRecordVO.from(exportRecordRepository.save(record));
     }
 
+    @Transactional(readOnly = true)
+    public ExportPreviewVO previewCourse(ExportRequest request) {
+        Course course = courseService.getOwnedCourse(request.getCourseId(), request.getUserId());
+        ExportTemplate template = resolveTemplate(request.getTemplateId());
+        String exportFormat = normalizeExportFormat(request.getExportFormat());
+        String exportName = requireText(request.getExportName(), "导出名称不能为空");
+        ExportScope scope = normalizeScope(request);
+        ExportPayload payload = buildPayload(course, request.getUserId(), scope);
+        return buildPreview(course, template, exportName, exportFormat, scope, payload);
+    }
+
     public Path resolveDownloadPath(Long exportId, Long userId) {
         ExportRecord record = exportRecordRepository.findByIdAndUserId(exportId, userId)
                 .orElseThrow(() -> new BusinessException("导出记录不存在或无权访问"));
@@ -152,6 +164,121 @@ public class ExportService {
                 .orElseThrow(() -> new BusinessException("导出记录不存在或无权访问"));
         courseService.getOwnedCourse(record.getCourseId(), userId);
         return ExportRecordVO.from(record);
+    }
+
+    private ExportPreviewVO buildPreview(
+            Course course,
+            ExportTemplate template,
+            String exportName,
+            String exportFormat,
+            ExportScope scope,
+            ExportPayload payload) {
+        ExportPreviewVO preview = new ExportPreviewVO();
+        preview.setCourseId(course.getId());
+        preview.setCourseName(course.getCourseName());
+        preview.setTemplateId(template == null ? null : template.getId());
+        preview.setTemplateName(template == null ? null : template.getTemplateName());
+        preview.setExportName(exportName);
+        preview.setExportFormat(exportFormat);
+        preview.setScope(scope.toJson());
+        preview.setChapters(payload.chapters.stream()
+                .map(this::toChapterPreview)
+                .collect(Collectors.toList()));
+        preview.setMaterials(payload.materials.stream()
+                .map(material -> toMaterialPreview(
+                        material, payload.chunkCountsByMaterialId, payload.tagsByMaterialId))
+                .collect(Collectors.toList()));
+        preview.setKnowledgeItems(payload.knowledgeItems.stream()
+                .map(this::toKnowledgeItemPreview)
+                .collect(Collectors.toList()));
+        preview.setExamStats(payload.examStats.stream()
+                .map(this::toExamStatPreview)
+                .collect(Collectors.toList()));
+        preview.setRelatedCourses(payload.relatedCourses.stream()
+                .map(this::toRelatedCoursePreview)
+                .collect(Collectors.toList()));
+
+        ExportPreviewVO.Summary summary = new ExportPreviewVO.Summary();
+        summary.setChapterCount(preview.getChapters().size());
+        summary.setMaterialCount(preview.getMaterials().size());
+        summary.setParsedMaterialCount((int) preview.getMaterials().stream()
+                .filter(material -> material.getParsedChunkCount() != null && material.getParsedChunkCount() > 0)
+                .count());
+        summary.setKnowledgeItemCount(preview.getKnowledgeItems().size());
+        summary.setExamStatCount(preview.getExamStats().size());
+        summary.setRelatedCourseCount(preview.getRelatedCourses().size());
+        summary.setRelatedMaterialCount(preview.getRelatedCourses().stream()
+                .mapToInt(related -> related.getMaterials().size())
+                .sum());
+        summary.setRelatedKnowledgeItemCount(preview.getRelatedCourses().stream()
+                .mapToInt(related -> related.getKnowledgeItems().size())
+                .sum());
+        preview.setSummary(summary);
+        return preview;
+    }
+
+    private ExportPreviewVO.ChapterPreview toChapterPreview(Chapter chapter) {
+        ExportPreviewVO.ChapterPreview preview = new ExportPreviewVO.ChapterPreview();
+        preview.setId(chapter.getId());
+        preview.setChapterNo(chapter.getChapterNo());
+        preview.setChapterTitle(chapter.getChapterTitle());
+        return preview;
+    }
+
+    private ExportPreviewVO.MaterialPreview toMaterialPreview(
+            Material material,
+            Map<Long, Long> chunkCountsByMaterialId,
+            Map<Long, List<String>> tagsByMaterialId) {
+        ExportPreviewVO.MaterialPreview preview = new ExportPreviewVO.MaterialPreview();
+        preview.setId(material.getId());
+        preview.setTitle(material.getTitle());
+        preview.setMaterialType(material.getMaterialType());
+        preview.setYear(material.getYear());
+        preview.setKey(material.getKey());
+        preview.setParsedChunkCount(chunkCountsByMaterialId.getOrDefault(material.getId(), 0L));
+        preview.setTags(new ArrayList<>(tagsByMaterialId.getOrDefault(
+                material.getId(), Collections.emptyList())));
+        return preview;
+    }
+
+    private ExportPreviewVO.KnowledgeItemPreview toKnowledgeItemPreview(KnowledgeItem item) {
+        ExportPreviewVO.KnowledgeItemPreview preview = new ExportPreviewVO.KnowledgeItemPreview();
+        preview.setId(item.getId());
+        preview.setTitle(item.getTitle());
+        preview.setItemType(item.getItemType());
+        preview.setImportanceLevel(item.getImportanceLevel());
+        preview.setSourcePage(item.getSourcePage());
+        return preview;
+    }
+
+    private ExportPreviewVO.ExamStatPreview toExamStatPreview(ExamKnowledgeStatVO stat) {
+        ExportPreviewVO.ExamStatPreview preview = new ExportPreviewVO.ExamStatPreview();
+        preview.setKnowledgeItemId(stat.getKnowledgeItemId());
+        preview.setKnowledgeTitle(stat.getKnowledgeTitle());
+        preview.setKnowledgeItemType(stat.getKnowledgeItemType());
+        preview.setChapterTitle(stat.getChapterTitle());
+        preview.setQuestionCount(stat.getQuestionCount());
+        preview.setTotalScore(stat.getTotalScore());
+        preview.setLatestExamYear(stat.getLatestExamYear());
+        return preview;
+    }
+
+    private ExportPreviewVO.RelatedCoursePreview toRelatedCoursePreview(RelatedCoursePayload related) {
+        ExportPreviewVO.RelatedCoursePreview preview = new ExportPreviewVO.RelatedCoursePreview();
+        preview.setCourseId(related.course.getId());
+        preview.setCourseName(related.course.getCourseName());
+        preview.setCourseCode(related.course.getCourseCode());
+        preview.setRelationType(related.relation.getRelationType());
+        preview.setRelationReason(related.relation.getReason());
+        preview.setChapterCount(related.chapters.size());
+        preview.setMaterials(related.materials.stream()
+                .map(material -> toMaterialPreview(
+                        material, related.chunkCountsByMaterialId, related.tagsByMaterialId))
+                .collect(Collectors.toList()));
+        preview.setKnowledgeItems(related.knowledgeItems.stream()
+                .map(this::toKnowledgeItemPreview)
+                .collect(Collectors.toList()));
+        return preview;
     }
 
     private ExportTemplate resolveTemplate(Long templateId) {

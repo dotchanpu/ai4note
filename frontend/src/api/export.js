@@ -16,6 +16,10 @@ export function createExport(data) {
   })
 }
 
+export function previewExport(data) {
+  return request.post('/exports/preview', data)
+}
+
 export function exportDownloadUrl(exportId, userId) {
   return `/api/exports/${exportId}/download?userId=${encodeURIComponent(userId)}`
 }

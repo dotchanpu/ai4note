@@ -22,7 +22,7 @@
 - 个性化复习生成配置创建、修改、删除和复用
 - 多供应商 AI 配置管理，保存模型信息和 API Key 环境变量别名
 - AI 生成任务记录保存与展示，追踪提示词、状态、结果路径和失败原因
-- Agent 知识包 ZIP 导出、关联课程重点内容导出、导出记录保存与下载
+- Agent 知识包 ZIP 导出、导出预览、关联课程重点内容导出、导出记录保存与下载
 - 课程前置、关联和后续关系维护
 - 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
@@ -202,6 +202,7 @@ GET  /api/courses/{courseId}/relations?userId={userId}
 POST /api/courses/{courseId}/relations?userId={userId}
 DELETE /api/course-relations/{relationId}?userId={userId}
 GET  /api/export-templates
+POST /api/exports/preview
 POST /api/exports
 GET  /api/exports?userId={userId}&courseId={courseId}
 GET  /api/exports/{exportId}/download?userId={userId}

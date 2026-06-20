@@ -1280,10 +1280,127 @@
                   <span>包含{{ option.label }}重点内容</span>
                   <small>{{ option.count }} 门</small>
                 </label>
+                <button
+                  type="button"
+                  class="export-preview-button"
+                  :disabled="exportPreviewLoading || exportCreating"
+                  @click="runExportPreview"
+                >
+                  <span>{{ exportPreviewLoading ? '预览中…' : '预览内容' }}</span>
+                  <strong>?</strong>
+                </button>
                 <button type="button" :disabled="exportCreating" @click="runExport">
                   <span>{{ exportCreating ? '导出中…' : '生成知识包' }}</span>
                   <strong>→</strong>
                 </button>
+              </div>
+
+              <div v-loading="exportPreviewLoading" class="export-preview">
+                <template v-if="exportPreview">
+                  <div class="export-preview-heading">
+                    <div>
+                      <span>预览范围</span>
+                      <strong>{{ exportPreview.courseName }}</strong>
+                    </div>
+                    <p>{{ exportPreview.templateName || '默认模板' }} · {{ exportPreview.exportFormat }}</p>
+                  </div>
+
+                  <div class="export-preview-stats">
+                    <div>
+                      <span>章节</span>
+                      <strong>{{ exportPreview.summary.chapterCount }}</strong>
+                    </div>
+                    <div>
+                      <span>资料</span>
+                      <strong>{{ exportPreview.summary.materialCount }}</strong>
+                    </div>
+                    <div>
+                      <span>已解析</span>
+                      <strong>{{ exportPreview.summary.parsedMaterialCount }}</strong>
+                    </div>
+                    <div>
+                      <span>知识条目</span>
+                      <strong>{{ exportPreview.summary.knowledgeItemCount }}</strong>
+                    </div>
+                    <div>
+                      <span>考点统计</span>
+                      <strong>{{ exportPreview.summary.examStatCount }}</strong>
+                    </div>
+                    <div>
+                      <span>关联课程</span>
+                      <strong>{{ exportPreview.summary.relatedCourseCount }}</strong>
+                    </div>
+                  </div>
+
+                  <div class="export-preview-grid">
+                    <section>
+                      <h3>课程章节</h3>
+                      <ul>
+                        <li v-for="chapter in exportPreview.chapters" :key="chapter.id">
+                          {{ chapter.chapterNo }} {{ chapter.chapterTitle }}
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.chapters.length === 0">未包含章节结构。</p>
+                    </section>
+
+                    <section>
+                      <h3>课程资料</h3>
+                      <ul>
+                        <li v-for="material in exportPreview.materials" :key="material.id">
+                          <strong>{{ material.title }}</strong>
+                          <span>{{ materialTypeLabel(material.materialType) }} · {{ material.parsedChunkCount }} 块文本</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.materials.length === 0">当前筛选条件下没有资料。</p>
+                    </section>
+
+                    <section>
+                      <h3>知识条目</h3>
+                      <ul>
+                        <li v-for="item in exportPreview.knowledgeItems" :key="item.id">
+                          <strong>{{ item.title }}</strong>
+                          <span>{{ knowledgeTypeLabel(item.itemType) }} · 重要度 {{ item.importanceLevel || '-' }}</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.knowledgeItems.length === 0">当前筛选条件下没有知识条目。</p>
+                    </section>
+
+                    <section>
+                      <h3>考点统计</h3>
+                      <ul>
+                        <li v-for="stat in exportPreview.examStats" :key="stat.knowledgeItemId || stat.knowledgeTitle">
+                          <strong>{{ stat.knowledgeTitle }}</strong>
+                          <span>{{ stat.questionCount }} 题 · {{ stat.totalScore || 0 }} 分 · {{ stat.latestExamYear || '未知年份' }}</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.examStats.length === 0">未包含考点统计。</p>
+                    </section>
+                  </div>
+
+                  <div class="export-preview-related">
+                    <div class="export-preview-related-title">
+                      <strong>{{ exportPreview.summary.relatedMaterialCount }}</strong>
+                      <span>关联课程重点资料</span>
+                      <strong>{{ exportPreview.summary.relatedKnowledgeItemCount }}</strong>
+                      <span>关联课程知识条目</span>
+                    </div>
+                    <article v-for="course in exportPreview.relatedCourses" :key="course.courseId">
+                      <div>
+                        <span>{{ relationTypeLabel(course.relationType) }}</span>
+                        <h3>{{ course.courseName }}</h3>
+                        <p>{{ course.chapterCount }} 个章节 · {{ course.materials.length }} 份重点资料 · {{ course.knowledgeItems.length }} 条知识</p>
+                      </div>
+                      <ul>
+                        <li v-for="material in course.materials" :key="material.id">{{ material.title }}</li>
+                      </ul>
+                    </article>
+                    <p v-if="exportPreview.relatedCourses.length === 0">未包含关联课程内容。</p>
+                  </div>
+                </template>
+                <div v-else class="export-preview-empty">
+                  <strong>先预览，再导出。</strong>
+                  <p>预览会按当前筛选条件展示 ZIP 将包含的课程结构、资料、知识、考点统计和关联课程内容。</p>
+                </div>
               </div>
             </div>
 
@@ -1669,7 +1786,8 @@ import {
   createExport,
   exportDownloadUrl,
   listExportRecords,
-  listExportTemplates
+  listExportTemplates,
+  previewExport
 } from '../../api/export'
 import {
   createKnowledgeGapReport,
@@ -1725,6 +1843,7 @@ const aiTaskLoading = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
+const exportPreviewLoading = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
@@ -1757,6 +1876,7 @@ const aiDefaultStatus = ref(null)
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
+const exportPreview = ref(null)
 const masterySavingIds = ref([])
 const selectedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
@@ -2486,37 +2606,58 @@ async function saveTeacherProfileEdit() {
 }
 
 async function runExport() {
-  if (!selectedCourse.value) return
-  if (!exportForm.exportName.trim()) {
-    ElMessage.warning('请输入导出名称')
-    return
-  }
+  const payload = buildExportPayload()
+  if (!payload) return
   exportCreating.value = true
   try {
-    const record = await createExport({
-      userId: currentUser.value.id,
-      courseId: selectedCourse.value.id,
-      templateId: exportForm.templateId,
-      exportName: exportForm.exportName.trim(),
-      exportFormat: 'ZIP',
-      chapterIds: exportForm.chapterIds,
-      materialTypes: exportForm.materialTypes,
-      onlyKeyMaterials: exportForm.onlyKeyMaterials,
-      includeExamStats: exportForm.includeExamStats,
-      includePrerequisiteCourses: exportForm.includePrerequisiteCourses
-        && hasCourseRelationsOfType('PREREQUISITE'),
-      includeRelatedCourses: exportForm.includeRelatedCourses
-        && hasCourseRelationsOfType('RELATED'),
-      includeFollowUpCourses: exportForm.includeFollowUpCourses
-        && hasCourseRelationsOfType('FOLLOW_UP')
-    })
+    const record = await createExport(payload)
     exportRecords.value.unshift(record)
+    exportPreview.value = null
     ElMessage.success('知识包已生成')
     downloadExport(record)
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     exportCreating.value = false
+  }
+}
+
+async function runExportPreview() {
+  const payload = buildExportPayload()
+  if (!payload) return
+  exportPreviewLoading.value = true
+  try {
+    exportPreview.value = await previewExport(payload)
+    ElMessage.success('导出预览已生成')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportPreviewLoading.value = false
+  }
+}
+
+function buildExportPayload() {
+  if (!selectedCourse.value || !currentUser.value) return null
+  if (!exportForm.exportName.trim()) {
+    ElMessage.warning('请输入导出名称')
+    return null
+  }
+  return {
+    userId: currentUser.value.id,
+    courseId: selectedCourse.value.id,
+    templateId: exportForm.templateId,
+    exportName: exportForm.exportName.trim(),
+    exportFormat: 'ZIP',
+    chapterIds: exportForm.chapterIds,
+    materialTypes: exportForm.materialTypes,
+    onlyKeyMaterials: exportForm.onlyKeyMaterials,
+    includeExamStats: exportForm.includeExamStats,
+    includePrerequisiteCourses: exportForm.includePrerequisiteCourses
+      && hasCourseRelationsOfType('PREREQUISITE'),
+    includeRelatedCourses: exportForm.includeRelatedCourses
+      && hasCourseRelationsOfType('RELATED'),
+    includeFollowUpCourses: exportForm.includeFollowUpCourses
+      && hasCourseRelationsOfType('FOLLOW_UP')
   }
 }
 
@@ -2768,6 +2909,7 @@ function resetExportForm() {
   exportForm.includePrerequisiteCourses = false
   exportForm.includeRelatedCourses = false
   exportForm.includeFollowUpCourses = false
+  exportPreview.value = null
 }
 
 function hasCourseRelationsOfType(type) {
@@ -6586,6 +6728,218 @@ button {
   cursor: wait;
 }
 
+.export-options .export-preview-button {
+  min-width: 145px;
+  border-radius: 0;
+  background: #fff;
+}
+
+.export-preview {
+  min-height: 220px;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid #111;
+}
+
+.export-preview-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.export-preview-heading span,
+.export-preview-heading strong,
+.export-preview-heading p {
+  display: block;
+}
+
+.export-preview-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.export-preview-heading strong {
+  margin-top: 6px;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-heading p {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.export-preview-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.export-preview-stats > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #111;
+  background: #f7f7f7;
+}
+
+.export-preview-stats span,
+.export-preview-stats strong {
+  display: block;
+}
+
+.export-preview-stats span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.export-preview-stats strong {
+  margin-top: 5px;
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.export-preview-grid section,
+.export-preview-related {
+  min-width: 0;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.export-preview-grid section {
+  padding: 16px;
+}
+
+.export-preview-grid h3,
+.export-preview-related h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.export-preview-grid ul,
+.export-preview-related ul {
+  max-height: 220px;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.export-preview-grid li,
+.export-preview-related li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid #ddd;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.export-preview-grid li:first-child,
+.export-preview-related li:first-child {
+  border-top: 0;
+}
+
+.export-preview-grid li strong,
+.export-preview-grid li span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-preview-grid li span {
+  color: #666;
+  font-size: 11px;
+}
+
+.export-preview-grid p,
+.export-preview-related p,
+.export-preview-empty p {
+  margin: 12px 0 0;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.export-preview-related {
+  margin-top: 12px;
+  padding: 16px;
+}
+
+.export-preview-related-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #111;
+}
+
+.export-preview-related-title strong {
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-related-title span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.export-preview-related article {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.35fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #ddd;
+}
+
+.export-preview-related article:first-of-type {
+  border-top: 0;
+}
+
+.export-preview-related article > div > span {
+  display: inline-flex;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.export-preview-empty {
+  min-height: 190px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.export-preview-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
 .export-records {
   margin-top: 56px;
 }
@@ -7505,6 +7859,9 @@ button {
   .ai-task-status,
   .ai-task-list,
   .export-form-grid,
+  .export-preview-stats,
+  .export-preview-grid,
+  .export-preview-related article,
   .export-record-grid {
     grid-template-columns: 1fr;
   }
@@ -7528,6 +7885,7 @@ button {
   .teacher-edit-actions,
   .review-form-actions,
   .ai-provider-actions,
+  .export-preview-heading,
   .export-record-heading,
   .export-record-card {
     display: grid;

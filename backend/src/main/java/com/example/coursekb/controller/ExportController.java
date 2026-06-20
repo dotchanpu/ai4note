@@ -2,6 +2,7 @@ package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.ExportRequest;
 import com.example.coursekb.service.ExportService;
+import com.example.coursekb.vo.ExportPreviewVO;
 import com.example.coursekb.vo.ExportRecordVO;
 import com.example.coursekb.vo.ExportTemplateVO;
 import java.nio.file.Path;
@@ -45,6 +46,11 @@ public class ExportController {
     @PostMapping("/exports")
     public ExportRecordVO exportCourse(@Valid @RequestBody ExportRequest request) {
         return exportService.exportCourse(request);
+    }
+
+    @PostMapping("/exports/preview")
+    public ExportPreviewVO previewCourse(@Valid @RequestBody ExportRequest request) {
+        return exportService.previewCourse(request);
     }
 
     @GetMapping("/exports/{exportId}/download")
