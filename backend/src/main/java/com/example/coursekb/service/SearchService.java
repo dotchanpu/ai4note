@@ -2,8 +2,10 @@ package com.example.coursekb.service;
 
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.vo.MaterialSearchResultVO;
+import com.example.coursekb.vo.SearchRecordVO;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +60,24 @@ public class SearchService {
                 "UNIFIED_KNOWLEDGE",
                 results.size());
         return results;
+    }
+
+    public List<SearchRecordVO> listRecords(Long userId, Long courseId) {
+        List<Object> parameters = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+                "SELECT sr.id, sr.user_id, sr.course_id, c.course_name, sr.keyword, "
+                        + "sr.search_type, sr.result_count, sr.search_time "
+                        + "FROM search_record sr "
+                        + "LEFT JOIN course c ON c.id = sr.course_id "
+                        + "WHERE sr.user_id = ?");
+        parameters.add(userId);
+        if (courseId != null) {
+            courseService.getOwnedCourse(courseId, userId);
+            sql.append(" AND sr.course_id = ?");
+            parameters.add(courseId);
+        }
+        sql.append(" ORDER BY sr.search_time DESC, sr.id DESC LIMIT 100");
+        return jdbcTemplate.query(sql.toString(), this::mapSearchRecord, parameters.toArray());
     }
 
     private List<MaterialSearchResultVO> searchMaterials(
@@ -214,6 +234,21 @@ public class SearchService {
         result.setMatchSource(source);
         result.setMatchedSnippet(createSnippet(sourceText, keyword));
         return result;
+    }
+
+    private SearchRecordVO mapSearchRecord(ResultSet resultSet, int rowNumber)
+            throws SQLException {
+        SearchRecordVO record = new SearchRecordVO();
+        record.setId(resultSet.getLong("id"));
+        record.setUserId(resultSet.getLong("user_id"));
+        record.setCourseId(nullableLong(resultSet, "course_id"));
+        record.setCourseName(resultSet.getString("course_name"));
+        record.setKeyword(resultSet.getString("keyword"));
+        record.setSearchType(resultSet.getString("search_type"));
+        record.setResultCount(resultSet.getInt("result_count"));
+        Timestamp searchTime = resultSet.getTimestamp("search_time");
+        record.setSearchTime(searchTime == null ? null : searchTime.toLocalDateTime());
+        return record;
     }
 
     private MaterialSearchResultVO mapKnowledgeResult(ResultSet resultSet, String keyword)
