@@ -1425,6 +1425,34 @@ CANCELED
 
 查询参数：`userId`。仅允许下载当前用户名下、任务类型为 `MOCK_EXAM` 且状态为 `SUCCESS` 的任务结果文件。
 
+### 14.15 按出题风格生成冲刺复习提纲
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/courses/{courseId}/sprint-outlines/generate`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherProfileId": 8,
+  "days": 7,
+  "model": "deepseek-v4-flash",
+  "customRequirement": "最后两天集中刷综合题"
+}
+```
+
+后端会校验课程和教师画像归属，结合教师画像、课程知识点和真题高频统计调用 DeepSeek 生成结构化冲刺复习提纲。生成过程写入 `ai_generation_task`，任务类型为 `REVIEW_GENERATION`；成功后将 Markdown 结果文件保存到 `storage-root/sprint-outlines/user-{userId}/course-{courseId}/`，并把相对路径写入 `resultPath`。
+
+### 14.16 下载冲刺复习提纲结果文件
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/sprint-outlines/{taskId}/download`
+
+查询参数：`userId`。仅允许下载当前用户名下、任务类型为 `REVIEW_GENERATION`、结果路径位于 `sprint-outlines/` 且状态为 `SUCCESS` 的任务结果文件。
+
 ## 15. Agent 知识包导出
 
 ### 15.1 查询导出模板
