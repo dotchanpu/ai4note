@@ -15,6 +15,7 @@
 - 统一检索资料标题、摘要、标签、PDF 正文和知识条目，支持章节、资料类型和重点标记筛选
 - DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
 - AI 基于资料完整语义整理标签与知识条目，保留类型、页码和重要程度
+- EXAM 资料真题抽取、自动知识点映射、人工补充映射与高频考点统计
 - 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
 - Vue 前端基础工作台
@@ -183,6 +184,10 @@ GET  /api/ai/status
 POST /api/ai/chat
 GET  /api/courses/{courseId}/knowledge-items?userId={userId}
 POST /api/materials/{materialId}/knowledge-items/ai-generate?userId={userId}
+POST /api/materials/{materialId}/exam-questions/extract?userId={userId}&overwrite={false|true}
+GET  /api/courses/{courseId}/exam-questions?userId={userId}&page={page}&size={size}
+POST /api/exam-questions/{questionId}/knowledge-map?userId={userId}
+GET  /api/courses/{courseId}/exam-knowledge-stats?userId={userId}
 ```
 
 完整接口说明见 [`docs/api-doc.md`](docs/api-doc.md)。
