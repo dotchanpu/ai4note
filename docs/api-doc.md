@@ -312,17 +312,19 @@ DELETE /api/courses/1?userId=1
 
 ### 7.1 查询课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/relations`
 
-响应内容包括课程的前置课、关联课和后续课。
+查询参数：`userId`。响应内容包括课程的前置课、关联课和后续课，并返回关联课程名称、编号、学期和说明。
 
 ### 7.2 创建课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/relations`
+
+查询参数：`userId`。
 
 请求体：
 
@@ -335,6 +337,8 @@ DELETE /api/courses/1?userId=1
 }
 ```
 
+后端会校验当前课程和关联课程都属于当前用户，禁止课程关联自身，禁止同一课程重复关联同一门课。
+
 `relationType` 可选值：
 
 | 值 | 含义 |
@@ -345,9 +349,11 @@ DELETE /api/courses/1?userId=1
 
 ### 7.3 删除课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`DELETE`
 - 路径：`/api/course-relations/{relationId}`
+
+查询参数：`userId`。只有课程归属用户可以删除该关系。
 
 ## 8. 课程资料
 
