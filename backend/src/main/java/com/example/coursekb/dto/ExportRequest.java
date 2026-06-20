@@ -23,6 +23,9 @@ public class ExportRequest {
     private List<String> materialTypes;
     private Boolean onlyKeyMaterials;
     private Boolean includeExamStats;
+    private Boolean includePrerequisiteCourses;
+    private Boolean includeRelatedCourses;
+    private Boolean includeFollowUpCourses;
 
     public Long getUserId() {
         return userId;
@@ -94,5 +97,29 @@ public class ExportRequest {
 
     public void setIncludeExamStats(Boolean includeExamStats) {
         this.includeExamStats = includeExamStats;
+    }
+
+    public Boolean getIncludePrerequisiteCourses() {
+        return includePrerequisiteCourses;
+    }
+
+    public void setIncludePrerequisiteCourses(Boolean includePrerequisiteCourses) {
+        this.includePrerequisiteCourses = includePrerequisiteCourses;
+    }
+
+    public Boolean getIncludeRelatedCourses() {
+        return includeRelatedCourses;
+    }
+
+    public void setIncludeRelatedCourses(Boolean includeRelatedCourses) {
+        this.includeRelatedCourses = includeRelatedCourses;
+    }
+
+    public Boolean getIncludeFollowUpCourses() {
+        return includeFollowUpCourses;
+    }
+
+    public void setIncludeFollowUpCourses(Boolean includeFollowUpCourses) {
+        this.includeFollowUpCourses = includeFollowUpCourses;
     }
 }

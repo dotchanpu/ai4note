@@ -1064,11 +1064,23 @@ CANCELED
   "chapterIds": [1, 2, 3],
   "materialTypes": ["SLIDE", "EXAM", "NOTE"],
   "onlyKeyMaterials": true,
-  "includeExamStats": true
+  "includeExamStats": true,
+  "includePrerequisiteCourses": true,
+  "includeRelatedCourses": false,
+  "includeFollowUpCourses": false
 }
 ```
 
-当前支持 `ZIP` 格式。导出范围支持按章节、资料类型、重点资料筛选；可选择是否包含高频考点统计。
+当前支持 `ZIP` 格式。导出范围支持按章节、资料类型、重点资料筛选；可选择是否包含高频考点统计，以及是否包含前置课程、关联课程、后续课程的重点内容。
+
+关联课程导出规则：
+
+- `includePrerequisiteCourses`：包含当前课程前置课程的重点资料和重点知识。
+- `includeRelatedCourses`：包含当前课程关联课程的重点资料和重点知识。
+- `includeFollowUpCourses`：包含当前课程后续课程的重点资料和重点知识。
+- 后端会根据课程关系校验课程归属，只纳入当前用户拥有的课程。
+- 关联课程只导出重点内容：重点资料、重点资料关联知识、高重要度知识和重点类型知识。
+- 导出记录的 `export_scope` 会保存用户选择的关联课程开关，以及实际纳入的课程 ID。
 
 导出包可包含：
 
@@ -1082,6 +1094,15 @@ materials/
 summaries/
 prompts/
 source/
+```
+
+开启关联课程导出时，ZIP 会额外包含：
+
+```text
+context/related-courses.md
+materials/related-course-materials.md
+summaries/related-course-key-points.md
+source/related-course-files.md
 ```
 
 成功后会在 `storage/exports/` 下生成 ZIP 文件，并写入 `export_record`。

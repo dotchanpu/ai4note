@@ -635,8 +635,8 @@
           >
             <div class="export-heading">
               <div>
-                <p class="eyebrow">agent export</p>
-                <h2>导出给 Agent 使用的课程知识包<span>.</span></h2>
+                <p class="eyebrow">知识包导出</p>
+                <h2>导出给 AI 使用的课程知识包<span>.</span></h2>
               </div>
               <p>把课程资料、标签、知识条目、章节结构和考点统计整理成 ZIP，保存导出记录并随时下载。</p>
             </div>
@@ -691,6 +691,18 @@
                   <el-switch v-model="exportForm.includeExamStats" />
                   <span>包含高频考点统计</span>
                 </label>
+                <label
+                  v-for="option in exportRelationOptions"
+                  :key="option.type"
+                  :class="{ 'option-disabled': option.count === 0 }"
+                >
+                  <el-switch
+                    v-model="exportForm[option.exportField]"
+                    :disabled="option.count === 0"
+                  />
+                  <span>包含{{ option.label }}重点内容</span>
+                  <small>{{ option.count }} 门</small>
+                </label>
                 <button type="button" :disabled="exportCreating" @click="runExport">
                   <span>{{ exportCreating ? '导出中…' : '生成知识包' }}</span>
                   <strong>→</strong>
@@ -702,7 +714,7 @@
               <div class="export-record-heading">
                 <div>
                   <strong>{{ exportRecords.length }}</strong>
-                  <span>export records</span>
+                  <span>导出记录</span>
                 </div>
                 <button type="button" :disabled="exportLoading" @click="loadExportData">刷新记录</button>
               </div>
@@ -727,7 +739,7 @@
 
         <section v-else class="no-course">
           <div class="no-course-shape"></div>
-          <p class="eyebrow">your first course</p>
+          <p class="eyebrow">第一门课程</p>
           <h1>从一门课程开始<span>.</span></h1>
           <button type="button" class="primary-pill" @click="openCourseCreator">新建课程 ＋</button>
         </section>
@@ -1132,14 +1144,14 @@ const activeSection = ref('overview')
 const examPreferredMaterialId = ref(null)
 
 const pageSections = [
-  { id: 'overview', label: 'overview.', title: '课程概览' },
-  { id: 'relations', label: 'relations.', title: '课程关系' },
-  { id: 'chapters', label: 'chapters.', title: '章节路径' },
-  { id: 'materials', label: 'materials.', title: '课程资料' },
-  { id: 'search', label: 'search.', title: '课程检索' },
-  { id: 'knowledge', label: 'knowledge.', title: '知识条目' },
-  { id: 'exam', label: 'exam.', title: 'Exam Mapping' },
-  { id: 'export', label: 'export.', title: 'Agent 导出' }
+  { id: 'overview', label: '概览', title: '课程概览' },
+  { id: 'relations', label: '关系', title: '课程关系' },
+  { id: 'chapters', label: '章节', title: '章节路径' },
+  { id: 'materials', label: '资料', title: '课程资料' },
+  { id: 'search', label: '检索', title: '课程检索' },
+  { id: 'knowledge', label: '知识', title: '知识条目' },
+  { id: 'exam', label: '真题', title: '真题映射' },
+  { id: 'export', label: '导出', title: '知识包导出' }
 ]
 
 const materialTypeOptions = [
@@ -1170,9 +1182,9 @@ const knowledgeTypeOptions = [
 ]
 
 const relationTypeOptions = [
-  { type: 'PREREQUISITE', label: '前置课程' },
-  { type: 'RELATED', label: '关联课程' },
-  { type: 'FOLLOW_UP', label: '后续课程' }
+  { type: 'PREREQUISITE', label: '前置课程', exportField: 'includePrerequisiteCourses' },
+  { type: 'RELATED', label: '关联课程', exportField: 'includeRelatedCourses' },
+  { type: 'FOLLOW_UP', label: '后续课程', exportField: 'includeFollowUpCourses' }
 ]
 
 const relationCandidateCourses = computed(() => {
@@ -1187,6 +1199,11 @@ const relationCandidateCourses = computed(() => {
 const relationGroups = computed(() => relationTypeOptions.map(option => ({
   ...option,
   items: courseRelations.value.filter(item => item.relationType === option.type)
+})))
+
+const exportRelationOptions = computed(() => relationTypeOptions.map(option => ({
+  ...option,
+  count: courseRelations.value.filter(item => item.relationType === option.type).length
 })))
 
 const deleteDialogTitle = computed(() => {
@@ -1262,7 +1279,10 @@ const exportForm = reactive({
   chapterIds: [],
   materialTypes: [],
   onlyKeyMaterials: false,
-  includeExamStats: true
+  includeExamStats: true,
+  includePrerequisiteCourses: false,
+  includeRelatedCourses: false,
+  includeFollowUpCourses: false
 })
 
 onMounted(() => {
@@ -1439,7 +1459,13 @@ async function runExport() {
       chapterIds: exportForm.chapterIds,
       materialTypes: exportForm.materialTypes,
       onlyKeyMaterials: exportForm.onlyKeyMaterials,
-      includeExamStats: exportForm.includeExamStats
+      includeExamStats: exportForm.includeExamStats,
+      includePrerequisiteCourses: exportForm.includePrerequisiteCourses
+        && hasCourseRelationsOfType('PREREQUISITE'),
+      includeRelatedCourses: exportForm.includeRelatedCourses
+        && hasCourseRelationsOfType('RELATED'),
+      includeFollowUpCourses: exportForm.includeFollowUpCourses
+        && hasCourseRelationsOfType('FOLLOW_UP')
     })
     exportRecords.value.unshift(record)
     ElMessage.success('知识包已生成')
@@ -1597,6 +1623,13 @@ function resetExportForm() {
   exportForm.materialTypes = []
   exportForm.onlyKeyMaterials = false
   exportForm.includeExamStats = true
+  exportForm.includePrerequisiteCourses = false
+  exportForm.includeRelatedCourses = false
+  exportForm.includeFollowUpCourses = false
+}
+
+function hasCourseRelationsOfType(type) {
+  return courseRelations.value.some(relation => relation.relationType === type)
 }
 
 function materialTypeLabel(type) {
@@ -3951,6 +3984,17 @@ button {
   border: 1px solid #111;
   font-size: 12px;
   font-weight: 800;
+}
+
+.export-options label.option-disabled {
+  color: #777;
+  background: #f2f2f2;
+}
+
+.export-options label small {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .export-options button {
