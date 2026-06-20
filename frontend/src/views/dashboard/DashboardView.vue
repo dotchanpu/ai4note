@@ -1134,6 +1134,62 @@
           </section>
 
           <section
+            id="ai-tasks"
+            class="ai-task-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'ai-tasks' }"
+          >
+            <div class="ai-task-heading">
+              <div>
+                <p class="eyebrow">AI 任务记录</p>
+                <h2>追踪生成任务<span>.</span></h2>
+              </div>
+              <p>保存教师画像、知识整理和后续复习生成任务的提示词、状态、结果路径和失败原因，便于排查与复用。</p>
+            </div>
+
+            <div class="ai-task-status">
+              <div>
+                <span>任务总数</span>
+                <strong>{{ aiTaskStats.total }}</strong>
+              </div>
+              <div>
+                <span>运行中</span>
+                <strong>{{ aiTaskStats.running }}</strong>
+              </div>
+              <div>
+                <span>失败</span>
+                <strong>{{ aiTaskStats.failed }}</strong>
+              </div>
+              <button type="button" :disabled="aiTaskLoading" @click="loadAiGenerationTasks">
+                {{ aiTaskLoading ? '刷新中…' : '刷新记录' }}
+              </button>
+            </div>
+
+            <div v-loading="aiTaskLoading" class="ai-task-list">
+              <article v-for="task in aiGenerationTasks" :key="task.id" class="ai-task-card">
+                <div class="ai-task-card-top">
+                  <span :class="`ai-task-status-${task.status?.toLowerCase() || 'pending'}`">
+                    {{ aiTaskStatusLabel(task.status) }}
+                  </span>
+                  <strong>#{{ task.id }}</strong>
+                </div>
+                <h3>{{ aiTaskTypeLabel(task.taskType) }}</h3>
+                <p>{{ task.prompt || '未保存提示词' }}</p>
+                <div class="ai-task-meta">
+                  <span>{{ formatAiTaskTime(task.createTime) }}</span>
+                  <span v-if="task.finishTime">完成：{{ formatAiTaskTime(task.finishTime) }}</span>
+                  <span v-if="task.resultPath">{{ task.resultPath }}</span>
+                </div>
+                <small v-if="task.errorMessage">{{ task.errorMessage }}</small>
+              </article>
+
+              <div v-if="!aiTaskLoading && aiGenerationTasks.length === 0" class="ai-task-empty">
+                <strong>还没有 AI 生成任务。</strong>
+                <p>运行知识整理或教师画像分析后，这里会记录任务状态。</p>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="exam"
             class="exam-section scroll-panel"
             :class="{ 'section-active': activeSection === 'exam' }"
@@ -1636,6 +1692,7 @@ import {
   createAiProvider,
   deleteAiProvider,
   getAiStatus,
+  listAiGenerationTasks,
   listAiProviders,
   updateAiProvider
 } from '../../api/ai'
@@ -1664,6 +1721,7 @@ const reviewProfileLoading = ref(false)
 const reviewProfileSaving = ref(false)
 const aiProviderLoading = ref(false)
 const aiProviderSaving = ref(false)
+const aiTaskLoading = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1694,6 +1752,7 @@ const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const reviewProfiles = ref([])
 const aiProviders = ref([])
+const aiGenerationTasks = ref([])
 const aiDefaultStatus = ref(null)
 const courseTags = ref([])
 const exportTemplates = ref([])
@@ -1724,6 +1783,7 @@ const pageSections = [
   { id: 'teacher', label: '画像', title: '教师画像' },
   { id: 'review', label: '复习', title: '复习配置' },
   { id: 'ai-config', label: 'AI', title: 'AI 配置' },
+  { id: 'ai-tasks', label: '任务', title: 'AI 任务记录' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
@@ -1741,6 +1801,12 @@ const materialGroups = computed(() => materialTypeOptions.map(group => ({
   ...group,
   items: materials.value.filter(material => material.materialType === group.type)
 })))
+
+const aiTaskStats = computed(() => ({
+  total: aiGenerationTasks.value.length,
+  running: aiGenerationTasks.value.filter(task => task.status === 'RUNNING' || task.status === 'PENDING').length,
+  failed: aiGenerationTasks.value.filter(task => task.status === 'FAILED').length
+}))
 
 const parsedMaterials = computed(() => materials.value.filter(
   material => material.parsedChunkCount > 0
@@ -2025,7 +2091,8 @@ async function selectCourse(course) {
       loadGapReports(),
       loadTeacherProfiles(),
       loadReviewProfiles(),
-      loadAiProviders()
+      loadAiProviders(),
+      loadAiGenerationTasks()
     ])
   } catch (error) {
     ElMessage.error(error.message)
@@ -2193,6 +2260,7 @@ async function runTeacherProfileAnalysis() {
     await loadTeacherProfiles()
     ElMessage.error(error.message)
   } finally {
+    await loadAiGenerationTasks()
     teacherProfileAnalyzing.value = false
   }
 }
@@ -2296,6 +2364,21 @@ async function loadAiProviders() {
     ElMessage.error(error.message)
   } finally {
     aiProviderLoading.value = false
+  }
+}
+
+async function loadAiGenerationTasks() {
+  if (!currentUser.value || !selectedCourse.value) return
+  aiTaskLoading.value = true
+  try {
+    aiGenerationTasks.value = await listAiGenerationTasks(
+      currentUser.value.id,
+      selectedCourse.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiTaskLoading.value = false
   }
 }
 
@@ -2528,6 +2611,7 @@ async function generateKnowledge() {
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
+    await loadAiGenerationTasks()
     knowledgeGenerating.value = false
   }
 }
@@ -2668,6 +2752,7 @@ function resetAiProviderForm() {
 function clearAiProviderState() {
   aiProviders.value = []
   aiDefaultStatus.value = null
+  aiGenerationTasks.value = []
   resetAiProviderForm()
 }
 
@@ -2735,6 +2820,29 @@ function reviewDifficultyLabel(value) {
 
 function reviewOutputLabel(value) {
   return reviewOutputOptions.find(option => option.value === value)?.label || value
+}
+
+function aiTaskTypeLabel(type) {
+  if (type === 'TEACHER_PROFILE') return '教师画像分析'
+  if (type === 'EXAM_MAPPING') return '真题知识映射'
+  if (type === 'KNOWLEDGE_GAP') return '知识缺口检测'
+  if (type === 'REVIEW_GENERATION') return '复习资料生成'
+  if (type === 'MOCK_EXAM') return '模拟题生成'
+  if (type === 'PACKAGE_SUMMARY') return '知识包摘要'
+  if (type === 'KNOWLEDGE_EXTRACTION') return '资料知识整理'
+  return type || '未知任务'
+}
+
+function aiTaskStatusLabel(status) {
+  if (status === 'RUNNING') return '运行中'
+  if (status === 'SUCCESS') return '成功'
+  if (status === 'FAILED') return '失败'
+  if (status === 'CANCELED') return '已取消'
+  return '等待中'
+}
+
+function formatAiTaskTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
 }
 
 function matchSourceLabel(source) {
@@ -6169,6 +6277,189 @@ button {
   font-size: 12px;
 }
 
+.ai-task-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #151515;
+}
+
+.ai-task-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.ai-task-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.ai-task-heading h2 span {
+  color: #14cbea;
+}
+
+.ai-task-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.ai-task-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 150px;
+  gap: 12px;
+  margin-top: 44px;
+}
+
+.ai-task-status > div,
+.ai-task-status button {
+  min-height: 78px;
+  padding: 18px;
+  border: 1px solid #555;
+  background: #1c1c1c;
+}
+
+.ai-task-status span,
+.ai-task-status strong {
+  display: block;
+}
+
+.ai-task-status span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-task-status strong {
+  margin-top: 8px;
+  color: #14cbea;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.ai-task-status button {
+  color: #111;
+  background: #14cbea;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ai-task-status button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-task-list {
+  min-height: 380px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  margin-top: 34px;
+}
+
+.ai-task-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #555;
+  background: #1b1b1b;
+  box-shadow: inset 0 4px 0 #14cbea;
+}
+
+.ai-task-card-top,
+.ai-task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-task-card-top {
+  justify-content: space-between;
+}
+
+.ai-task-card-top span,
+.ai-task-meta span {
+  padding: 4px 8px;
+  border: 1px solid #14cbea;
+  color: #14cbea;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.ai-task-card-top .ai-task-status-success {
+  border-color: #0de0c0;
+  color: #0de0c0;
+}
+
+.ai-task-card-top .ai-task-status-running,
+.ai-task-card-top .ai-task-status-pending {
+  border-color: #ffb21c;
+  color: #ffb21c;
+}
+
+.ai-task-card-top .ai-task-status-failed,
+.ai-task-card-top .ai-task-status-canceled {
+  border-color: #ff3151;
+  color: #ff3151;
+}
+
+.ai-task-card h3 {
+  margin: 16px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-task-card p {
+  min-height: 72px;
+  max-height: 96px;
+  margin: 0 0 14px;
+  overflow: hidden;
+  color: #ccc;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ai-task-card small {
+  display: block;
+  margin-top: 12px;
+  overflow: hidden;
+  color: #ff8aa0;
+  font-size: 11px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-task-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.ai-task-empty strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.ai-task-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .export-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -7085,6 +7376,7 @@ button {
   .teacher-section,
   .review-section,
   .ai-config-section,
+  .ai-task-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -7132,6 +7424,7 @@ button {
   .teacher-heading,
   .review-heading,
   .ai-config-heading,
+  .ai-task-heading,
   .export-heading {
     display: block;
   }
@@ -7178,6 +7471,10 @@ button {
     margin-top: 24px;
   }
 
+  .ai-task-heading > p {
+    margin-top: 24px;
+  }
+
   .relation-heading > p {
     margin-top: 24px;
   }
@@ -7205,6 +7502,8 @@ button {
   .ai-config-status,
   .ai-config-layout,
   .ai-provider-list,
+  .ai-task-status,
+  .ai-task-list,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
