@@ -1853,6 +1853,50 @@
   </el-dialog>
 
   <el-dialog
+    v-model="similarDialogVisible"
+    class="studio-dialog studio-dialog-similar"
+    modal-class="studio-dialog-overlay"
+    width="680px"
+    :show-close="false"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>similar / 相似资料</p>
+          <h2>可能已有重复资料<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="similarDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <div class="similar-dialog">
+      <p v-if="similarSourceMaterial">
+        「{{ similarSourceMaterial.title }}」与以下资料内容接近，建议确认后再继续整理。
+      </p>
+      <article v-for="item in similarMaterialResults" :key="item.material.id" class="similar-material-card">
+        <div>
+          <strong>{{ item.material.title }}</strong>
+          <span>{{ materialTypeLabel(item.material.materialType) }} · {{ Math.round(item.score * 100) }}%</span>
+        </div>
+        <p>{{ item.material.summary || '暂无摘要' }}</p>
+        <div class="similar-reasons">
+          <span v-for="reason in item.reasons" :key="reason">{{ reason }}</span>
+        </div>
+        <button type="button" @click="openSimilarMaterial(item.material)">查看资料</button>
+      </article>
+    </div>
+    <template #footer>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-primary" @click="similarDialogVisible = false">
+          <span>我知道了</span>
+          <strong>→</strong>
+        </button>
+      </div>
+    </template>
+  </el-dialog>
+
+  <el-dialog
     v-model="deleteDialogVisible"
     class="studio-dialog studio-dialog-delete"
     modal-class="studio-dialog-overlay"
@@ -1917,6 +1961,7 @@ import {
 import {
   deleteMaterial,
   generateMaterialSummary,
+  listSimilarMaterials,
   listMaterials,
   listTextChunks,
   parsePdf,
@@ -2009,6 +2054,7 @@ const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
 const materialDialogVisible = ref(false)
 const textPreviewVisible = ref(false)
+const similarDialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteLoading = ref(false)
 const deleteTarget = ref(null)
@@ -2048,6 +2094,8 @@ const uploadFileList = ref([])
 const uploadDrafts = ref([])
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
+const similarSourceMaterial = ref(null)
+const similarMaterialResults = ref([])
 const textChunks = ref([])
 const activeSection = ref('overview')
 const examPreferredMaterialId = ref(null)
@@ -3359,6 +3407,7 @@ async function saveMaterial() {
     const uploadedMaterials = await uploadMaterialsBatch(data)
     materials.value.unshift(...uploadedMaterials)
     await loadCourseStats()
+    await checkSimilarMaterials(uploadedMaterials)
     resetMaterialForm()
     materialDialogVisible.value = false
     ElMessage.success(`已上传 ${uploadedMaterials.length} 份资料`)
@@ -3414,6 +3463,7 @@ async function runPdfParse(material) {
     const result = await parsePdf(material.id, currentUser.value.id)
     material.parsedChunkCount = result.chunkCount
     await loadCourseStats()
+    await checkSimilarMaterials([material])
     ElMessage.success(`解析完成，共提取 ${result.chunkCount} 个文本块`)
   } catch (error) {
     ElMessage.error(error.message)
@@ -3446,6 +3496,27 @@ async function runMaterialSummary(material) {
   } finally {
     summaryGeneratingIds.value = summaryGeneratingIds.value.filter(id => id !== material.id)
   }
+}
+
+async function checkSimilarMaterials(sourceMaterials) {
+  for (const material of sourceMaterials) {
+    try {
+      const results = await listSimilarMaterials(material.id, currentUser.value.id)
+      if (results.length > 0) {
+        similarSourceMaterial.value = material
+        similarMaterialResults.value = results
+        similarDialogVisible.value = true
+        return
+      }
+    } catch (error) {
+      ElMessage.warning(`相似资料检测失败：${error.message}`)
+    }
+  }
+}
+
+function openSimilarMaterial(material) {
+  similarDialogVisible.value = false
+  openMaterialEditor(material)
 }
 
 async function showParsedText(material) {
@@ -7805,6 +7876,84 @@ button {
   font-weight: 800;
 }
 
+.similar-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.similar-dialog > p {
+  margin: 0;
+  color: #555;
+  line-height: 1.7;
+}
+
+.similar-material-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #faf9f6;
+}
+
+.similar-material-card > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.similar-material-card strong,
+.similar-material-card span {
+  display: block;
+}
+
+.similar-material-card strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similar-material-card > div:first-child span {
+  flex: 0 0 auto;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.similar-material-card p {
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.similar-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.similar-reasons span {
+  padding: 5px 9px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  color: #111;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.similar-material-card button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -7863,6 +8012,10 @@ button {
 
 :global(.studio-dialog-text) {
   --dialog-accent: #14cbea;
+}
+
+:global(.studio-dialog-similar) {
+  --dialog-accent: #ffef5a;
 }
 
 :global(.studio-dialog-text .el-dialog__body) {

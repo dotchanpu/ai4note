@@ -49,3 +49,9 @@ export function listTextChunks(materialId, userId) {
     params: { userId }
   })
 }
+
+export function listSimilarMaterials(materialId, userId) {
+  return request.get(`/materials/${materialId}/similar`, {
+    params: { userId }
+  })
+}
