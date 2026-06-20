@@ -823,7 +823,7 @@ NEED_REVIEW
 
 ### 12.3 生成知识缺口报告
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/knowledge-gap-reports`
 
@@ -839,17 +839,36 @@ NEED_REVIEW
 
 系统综合当前课程知识点、前置课程知识点、真题高频考点和用户掌握状态生成报告。
 
-### 12.4 查询知识缺口报告
+生成规则：
 
-- 状态：规划中
+- 当前课程知识点始终参与检测。
+- `includePrerequisites` 为 `true` 时，会纳入当前课程的前置课程知识点。
+- 根据掌握状态、掌握分数、真题命中次数和是否来自前置课程计算 `severityLevel`。
+- 明细 `gapType` 包括 `WEAK_MASTERY`、`NEED_REVIEW`、`HIGH_FREQUENCY`、`PREREQUISITE_GAP` 和 `UNASSESSED`。
+
+### 12.4 查询课程知识缺口报告列表
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/knowledge-gap-reports`
+
+查询参数：`userId`。按创建时间倒序返回该课程的历史知识缺口报告。
+
+### 12.5 查询知识缺口报告
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/knowledge-gap-reports/{reportId}`
 
-### 12.5 查询知识缺口明细
+查询参数：`userId`。后端会校验报告归属和课程归属。
 
-- 状态：规划中
+### 12.6 查询知识缺口明细
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/knowledge-gap-reports/{reportId}/items`
+
+查询参数：`userId`。返回知识点标题、来源课程、前置关系、掌握状态、掌握分数、真题命中次数、严重程度、原因和建议。
 
 缺口类型：
 

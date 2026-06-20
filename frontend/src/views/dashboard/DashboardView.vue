@@ -656,6 +656,107 @@
           </section>
 
           <section
+            id="gaps"
+            class="gap-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'gaps' }"
+          >
+            <div class="gap-heading">
+              <div>
+                <p class="eyebrow">知识缺口</p>
+                <h2>找出复习优先级<span>.</span></h2>
+              </div>
+              <p>结合课程知识点、前置课程、掌握状态和真题高频考点，生成可追溯的薄弱知识清单。</p>
+            </div>
+
+            <div class="gap-generator">
+              <label>
+                <span>报告名称</span>
+                <el-input v-model="gapForm.reportName" maxlength="128" placeholder="例如：期末前知识缺口检查" />
+              </label>
+              <label class="gap-switch">
+                <el-switch v-model="gapForm.includePrerequisites" />
+                <span>包含前置课程</span>
+                <small>{{ relationGroups[0]?.items.length || 0 }} 门</small>
+              </label>
+              <button type="button" :disabled="gapGenerating" @click="generateGapReport">
+                {{ gapGenerating ? '生成中…' : '生成报告' }}
+              </button>
+            </div>
+
+            <div class="gap-layout">
+              <aside v-loading="gapLoading" class="gap-report-list">
+                <div class="gap-report-heading">
+                  <strong>{{ gapReports.length }}</strong>
+                  <span>历史报告</span>
+                </div>
+                <button
+                  v-for="report in gapReports"
+                  :key="report.id"
+                  type="button"
+                  :class="{ active: selectedGapReport?.id === report.id }"
+                  @click="selectGapReport(report)"
+                >
+                  <strong>{{ report.reportName }}</strong>
+                  <span>{{ report.itemCount }} 个缺口 · {{ formatGapTime(report.createTime) }}</span>
+                </button>
+                <div v-if="!gapLoading && gapReports.length === 0" class="gap-empty-list">
+                  还没有知识缺口报告
+                </div>
+              </aside>
+
+              <div class="gap-detail" v-loading="gapItemLoading">
+                <div v-if="selectedGapReport" class="gap-summary">
+                  <div>
+                    <span>缺口总数</span>
+                    <strong>{{ gapStats.total }}</strong>
+                  </div>
+                  <div>
+                    <span>高优先级</span>
+                    <strong>{{ gapStats.severe }}</strong>
+                  </div>
+                  <div>
+                    <span>前置课程相关</span>
+                    <strong>{{ gapStats.prerequisite }}</strong>
+                  </div>
+                </div>
+
+                <p v-if="selectedGapReport" class="gap-report-summary">
+                  {{ selectedGapReport.summary }}
+                </p>
+
+                <div v-if="gapItems.length > 0" class="gap-item-grid">
+                  <article v-for="item in gapItems" :key="item.id" class="gap-item-card">
+                    <div class="gap-item-top">
+                      <span>{{ gapTypeLabel(item.gapType) }}</span>
+                      <strong>优先级 {{ item.severityLevel }}</strong>
+                    </div>
+                    <h3>{{ item.knowledgeTitle }}</h3>
+                    <div class="gap-item-meta">
+                      <span>{{ item.sourceCourseName }}</span>
+                      <span>{{ relationTypeLabel(item.relationType) }}</span>
+                      <span>{{ masteryStatusLabel(item.masteryStatus) }}</span>
+                      <span v-if="item.masteryScore !== null">分数 {{ item.masteryScore }}</span>
+                      <span v-if="item.examQuestionCount">真题 {{ item.examQuestionCount }} 次</span>
+                    </div>
+                    <p>{{ item.reason }}</p>
+                    <small>{{ item.suggestion }}</small>
+                  </article>
+                </div>
+
+                <div v-if="selectedGapReport && !gapItemLoading && gapItems.length === 0" class="gap-empty-detail">
+                  <strong>没有发现明显知识缺口。</strong>
+                  <p>可以继续补充掌握状态或真题映射后重新生成。</p>
+                </div>
+
+                <div v-if="!selectedGapReport" class="gap-empty-detail">
+                  <strong>先生成一份知识缺口报告。</strong>
+                  <p>报告会保存历史记录，并按优先级展示薄弱知识点。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="exam"
             class="exam-section scroll-panel"
             :class="{ 'section-active': activeSection === 'exam' }"
@@ -1137,6 +1238,11 @@ import {
   listExportRecords,
   listExportTemplates
 } from '../../api/export'
+import {
+  createKnowledgeGapReport,
+  listKnowledgeGapItems,
+  listKnowledgeGapReports
+} from '../../api/gap'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -1150,6 +1256,9 @@ const relationLoading = ref(false)
 const relationSaving = ref(false)
 const knowledgeLoading = ref(false)
 const knowledgeGenerating = ref(false)
+const gapLoading = ref(false)
+const gapGenerating = ref(false)
+const gapItemLoading = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1174,6 +1283,8 @@ const materials = ref([])
 const courseRelations = ref([])
 const searchResults = ref([])
 const knowledgeItems = ref([])
+const gapReports = ref([])
+const gapItems = ref([])
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
@@ -1181,6 +1292,7 @@ const masterySavingIds = ref([])
 const selectedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
+const selectedGapReport = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
@@ -1195,6 +1307,7 @@ const pageSections = [
   { id: 'materials', label: '资料', title: '课程资料' },
   { id: 'search', label: '检索', title: '课程检索' },
   { id: 'knowledge', label: '知识', title: '知识条目' },
+  { id: 'gaps', label: '缺口', title: '知识缺口' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
@@ -1258,6 +1371,12 @@ const exportRelationOptions = computed(() => relationTypeOptions.map(option => (
   ...option,
   count: courseRelations.value.filter(item => item.relationType === option.type).length
 })))
+
+const gapStats = computed(() => ({
+  total: gapItems.value.length,
+  severe: gapItems.value.filter(item => item.severityLevel >= 4).length,
+  prerequisite: gapItems.value.filter(item => item.relatedCourseRelationId).length
+}))
 
 const deleteDialogTitle = computed(() => {
   if (deleteTarget.value?.type === 'course') return '删除这门课程'
@@ -1326,6 +1445,11 @@ const knowledgeForm = reactive({
   replaceExisting: false
 })
 
+const gapForm = reactive({
+  reportName: '',
+  includePrerequisites: true
+})
+
 const exportForm = reactive({
   exportName: '',
   templateId: null,
@@ -1388,6 +1512,7 @@ async function loadCourses() {
       chapters.value = []
       materials.value = []
       courseRelations.value = []
+      clearGapState()
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1401,6 +1526,7 @@ async function selectCourse(course) {
   activeSection.value = 'overview'
   examPreferredMaterialId.value = null
   resetRelationForm()
+  resetGapForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1417,7 +1543,7 @@ async function selectCourse(course) {
     materials.value = materialData
     courseRelations.value = relationData
     resetExportForm()
-    await Promise.all([loadKnowledgeItems(), loadCourseTags(), loadExportData()])
+    await Promise.all([loadKnowledgeItems(), loadCourseTags(), loadExportData(), loadGapReports()])
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -1492,6 +1618,56 @@ async function loadExportData() {
     ElMessage.error(error.message)
   } finally {
     exportLoading.value = false
+  }
+}
+
+async function loadGapReports() {
+  if (!selectedCourse.value || !currentUser.value) return
+  gapLoading.value = true
+  try {
+    gapReports.value = await listKnowledgeGapReports(selectedCourse.value.id, currentUser.value.id)
+    if (gapReports.value.length > 0) {
+      await selectGapReport(gapReports.value[0])
+    } else {
+      selectedGapReport.value = null
+      gapItems.value = []
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapLoading.value = false
+  }
+}
+
+async function generateGapReport() {
+  if (!selectedCourse.value || !currentUser.value) return
+  gapGenerating.value = true
+  try {
+    const report = await createKnowledgeGapReport(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      reportName: gapForm.reportName.trim() || null,
+      includePrerequisites: gapForm.includePrerequisites
+    })
+    gapReports.value = [report, ...gapReports.value.filter(item => item.id !== report.id)]
+    await selectGapReport(report)
+    resetGapForm()
+    ElMessage.success('知识缺口报告已生成')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapGenerating.value = false
+  }
+}
+
+async function selectGapReport(report) {
+  selectedGapReport.value = report
+  gapItemLoading.value = true
+  try {
+    gapItems.value = await listKnowledgeGapItems(report.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapItemLoading.value = false
   }
 }
 
@@ -1705,6 +1881,20 @@ function resetRelationForm() {
   relationForm.reason = ''
 }
 
+function resetGapForm() {
+  gapForm.reportName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 知识缺口报告`
+    : ''
+  gapForm.includePrerequisites = true
+}
+
+function clearGapState() {
+  gapReports.value = []
+  gapItems.value = []
+  selectedGapReport.value = null
+  resetGapForm()
+}
+
 function resetExportForm() {
   exportForm.exportName = selectedCourse.value
     ? `${selectedCourse.value.courseName} 知识包`
@@ -1725,6 +1915,26 @@ function hasCourseRelationsOfType(type) {
 
 function materialTypeLabel(type) {
   return materialTypeOptions.find(option => option.type === type)?.label || type
+}
+
+function masteryStatusLabel(status) {
+  return masteryStatusOptions.find(option => option.status === status)?.label || '未评估'
+}
+
+function gapTypeLabel(type) {
+  if (type === 'WEAK_MASTERY') return '掌握薄弱'
+  if (type === 'NEED_REVIEW') return '需要复习'
+  if (type === 'HIGH_FREQUENCY') return '高频考点'
+  if (type === 'PREREQUISITE_GAP') return '前置缺口'
+  return '未评估'
+}
+
+function relationTypeLabel(type) {
+  return relationTypeOptions.find(option => option.type === type)?.label || '当前课程'
+}
+
+function formatGapTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
 }
 
 function matchSourceLabel(source) {
@@ -2034,6 +2244,7 @@ async function removeCourse(courseId) {
       chapters.value = []
       materials.value = []
       courseRelations.value = []
+      clearGapState()
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -2082,6 +2293,7 @@ function logout() {
   materials.value = []
   courseRelations.value = []
   selectedCourse.value = null
+  clearGapState()
 }
 
 function openCourseCreator() {
@@ -4051,6 +4263,288 @@ button {
   font-size: 12px;
 }
 
+.gap-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #111;
+  background: #f5f3ef;
+}
+
+.gap-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.gap-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.gap-heading h2 span {
+  color: #ff3151;
+}
+
+.gap-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.gap-generator {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 150px;
+  gap: 12px;
+  align-items: end;
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ff3151;
+}
+
+.gap-generator label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.gap-generator .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.gap-switch {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.gap-switch small {
+  color: #666;
+}
+
+.gap-generator button {
+  min-height: 50px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gap-generator button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.gap-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 22px;
+  margin-top: 50px;
+}
+
+.gap-report-list {
+  min-height: 360px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.gap-report-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.gap-report-heading strong {
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.gap-report-heading span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.gap-report-list > button {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #111;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gap-report-list > button.active {
+  background: #111;
+  color: #fff;
+}
+
+.gap-report-list > button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gap-report-list > button span {
+  color: #777;
+  font-size: 11px;
+}
+
+.gap-report-list > button.active span {
+  color: #ccc;
+}
+
+.gap-empty-list {
+  min-height: 170px;
+  display: grid;
+  place-content: center;
+  color: #777;
+  font-size: 13px;
+}
+
+.gap-detail {
+  min-height: 360px;
+}
+
+.gap-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gap-summary > div {
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.gap-summary span,
+.gap-summary strong {
+  display: block;
+}
+
+.gap-summary span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.gap-summary strong {
+  margin-top: 8px;
+  font-size: 38px;
+  letter-spacing: -0.06em;
+}
+
+.gap-report-summary {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #fff;
+  color: #333;
+  line-height: 1.7;
+}
+
+.gap-item-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.gap-item-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 7px 7px 0 #111;
+}
+
+.gap-item-top,
+.gap-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gap-item-top {
+  justify-content: space-between;
+}
+
+.gap-item-top span,
+.gap-item-meta span {
+  padding: 4px 8px;
+  border: 1px solid #111;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.gap-item-top strong {
+  color: #ff3151;
+  font-size: 12px;
+}
+
+.gap-item-card h3 {
+  margin: 16px 0 12px;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.gap-item-card p {
+  margin: 14px 0 0;
+  color: #333;
+  line-height: 1.7;
+}
+
+.gap-item-card small {
+  display: block;
+  margin-top: 12px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.gap-empty-detail {
+  min-height: 360px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.gap-empty-detail strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.gap-empty-detail p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .export-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -4963,6 +5457,7 @@ button {
   .relation-section,
   .chapter-section,
   .material-section,
+  .gap-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -5006,6 +5501,7 @@ button {
   .material-title-row,
   .search-heading,
   .knowledge-heading,
+  .gap-heading,
   .export-heading {
     display: block;
   }
@@ -5036,6 +5532,10 @@ button {
     margin-top: 24px;
   }
 
+  .gap-heading > p {
+    margin-top: 24px;
+  }
+
   .relation-heading > p {
     margin-top: 24px;
   }
@@ -5051,6 +5551,10 @@ button {
   .knowledge-generator-main,
   .knowledge-tags-panel,
   .knowledge-mastery-row,
+  .gap-generator,
+  .gap-layout,
+  .gap-summary,
+  .gap-item-grid,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
