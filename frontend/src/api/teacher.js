@@ -11,3 +11,9 @@ export function analyzeTeacherProfile(courseId, data) {
     timeout: 180000
   })
 }
+
+export function listTeacherProfileEvidence(profileId, userId) {
+  return request.get(`/teacher-profiles/${profileId}/evidence`, {
+    params: { userId }
+  })
+}

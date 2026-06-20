@@ -808,7 +808,7 @@
                     :key="profile.id"
                     type="button"
                     :class="{ active: selectedTeacherProfile?.id === profile.id }"
-                    @click="selectedTeacherProfile = profile"
+                    @click="selectTeacherProfile(profile)"
                   >
                     <strong>{{ profile.teacherName }}</strong>
                     <span>{{ teacherStatusLabel(profile.analysisStatus) }}</span>
@@ -856,6 +856,29 @@
                       <span>依据摘要</span>
                       <p>{{ selectedTeacherProfile.sourceSummary || '暂无分析结果' }}</p>
                     </section>
+                  </div>
+                  <div v-loading="teacherEvidenceLoading" class="teacher-evidence-panel">
+                    <div class="teacher-evidence-heading">
+                      <strong>{{ teacherProfileEvidence.length }}</strong>
+                      <span>证据来源</span>
+                    </div>
+                    <div v-if="teacherProfileEvidence.length > 0" class="teacher-evidence-list">
+                      <article v-for="evidence in teacherProfileEvidence" :key="evidence.id">
+                        <div>
+                          <strong>{{ evidence.materialTitle }}</strong>
+                          <span>{{ evidenceTypeLabel(evidence.evidenceType) }}</span>
+                        </div>
+                        <p>{{ evidence.evidenceSummary }}</p>
+                        <small>
+                          {{ evidence.materialType || '资料' }}
+                          <template v-if="evidence.sourcePage"> · 第 {{ evidence.sourcePage }} 页</template>
+                          <template v-if="evidence.confidenceScore !== null"> · 置信度 {{ evidence.confidenceScore }}%</template>
+                        </small>
+                      </article>
+                    </div>
+                    <div v-else class="teacher-evidence-empty">
+                      暂无证据来源
+                    </div>
                   </div>
                 </template>
                 <div v-else class="teacher-empty-detail">
@@ -1355,6 +1378,7 @@ import {
 } from '../../api/gap'
 import {
   analyzeTeacherProfile,
+  listTeacherProfileEvidence,
   listTeacherProfiles
 } from '../../api/teacher'
 
@@ -1375,6 +1399,7 @@ const gapGenerating = ref(false)
 const gapItemLoading = ref(false)
 const teacherProfileLoading = ref(false)
 const teacherProfileAnalyzing = ref(false)
+const teacherEvidenceLoading = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1402,6 +1427,7 @@ const knowledgeItems = ref([])
 const gapReports = ref([])
 const gapItems = ref([])
 const teacherProfiles = ref([])
+const teacherProfileEvidence = ref([])
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
@@ -1812,7 +1838,12 @@ async function loadTeacherProfiles() {
   teacherProfileLoading.value = true
   try {
     teacherProfiles.value = await listTeacherProfiles(selectedCourse.value.id, currentUser.value.id)
-    selectedTeacherProfile.value = teacherProfiles.value[0] || null
+    if (teacherProfiles.value.length > 0) {
+      await selectTeacherProfile(teacherProfiles.value[0])
+    } else {
+      selectedTeacherProfile.value = null
+      teacherProfileEvidence.value = []
+    }
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -1834,7 +1865,7 @@ async function runTeacherProfileAnalysis() {
       materialIds: teacherProfileForm.materialIds
     })
     teacherProfiles.value = [profile, ...teacherProfiles.value.filter(item => item.id !== profile.id)]
-    selectedTeacherProfile.value = profile
+    await selectTeacherProfile(profile)
     resetTeacherProfileForm()
     ElMessage.success('教师画像分析完成')
   } catch (error) {
@@ -1842,6 +1873,18 @@ async function runTeacherProfileAnalysis() {
     ElMessage.error(error.message)
   } finally {
     teacherProfileAnalyzing.value = false
+  }
+}
+
+async function selectTeacherProfile(profile) {
+  selectedTeacherProfile.value = profile
+  teacherEvidenceLoading.value = true
+  try {
+    teacherProfileEvidence.value = await listTeacherProfileEvidence(profile.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherEvidenceLoading.value = false
   }
 }
 
@@ -2076,6 +2119,7 @@ function resetTeacherProfileForm() {
 
 function clearTeacherProfileState() {
   teacherProfiles.value = []
+  teacherProfileEvidence.value = []
   selectedTeacherProfile.value = null
   resetTeacherProfileForm()
 }
@@ -2128,6 +2172,14 @@ function teacherStatusLabel(status) {
   if (status === 'FAILED') return '失败'
   if (status === 'MANUAL_REVIEWED') return '已人工确认'
   return '等待分析'
+}
+
+function evidenceTypeLabel(type) {
+  if (type === 'QUESTION_TYPE') return '题型证据'
+  if (type === 'GRADING') return '评分证据'
+  if (type === 'FOCUS_TOPIC') return '重点证据'
+  if (type === 'AVOID_TOPIC') return '规避证据'
+  return '风格证据'
 }
 
 function matchSourceLabel(source) {
@@ -4941,6 +4993,85 @@ button {
   color: #ddd;
   line-height: 1.75;
   white-space: pre-wrap;
+}
+
+.teacher-evidence-panel {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #555;
+}
+
+.teacher-evidence-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teacher-evidence-heading strong {
+  color: #0de0c0;
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-evidence-heading span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-evidence-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.teacher-evidence-list article {
+  padding: 16px;
+  border: 1px solid #444;
+  background: #141414;
+}
+
+.teacher-evidence-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.teacher-evidence-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-evidence-list span {
+  flex: 0 0 auto;
+  color: #0de0c0;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.teacher-evidence-list p {
+  margin: 10px 0 0;
+  color: #ddd;
+  line-height: 1.65;
+}
+
+.teacher-evidence-list small {
+  display: block;
+  margin-top: 10px;
+  color: #999;
+}
+
+.teacher-evidence-empty {
+  min-height: 120px;
+  display: grid;
+  place-content: center;
+  margin-top: 14px;
+  border: 1px dashed #555;
+  color: #888;
+  font-size: 13px;
 }
 
 .teacher-empty-detail {

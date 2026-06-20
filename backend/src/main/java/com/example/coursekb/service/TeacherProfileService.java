@@ -5,12 +5,15 @@ import com.example.coursekb.entity.Course;
 import com.example.coursekb.entity.ExamQuestion;
 import com.example.coursekb.entity.Material;
 import com.example.coursekb.entity.TeacherProfile;
+import com.example.coursekb.entity.TeacherProfileEvidence;
 import com.example.coursekb.entity.TextChunk;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.mapper.ExamQuestionRepository;
 import com.example.coursekb.mapper.MaterialRepository;
+import com.example.coursekb.mapper.TeacherProfileEvidenceRepository;
 import com.example.coursekb.mapper.TeacherProfileRepository;
 import com.example.coursekb.mapper.TextChunkRepository;
+import com.example.coursekb.vo.TeacherProfileEvidenceVO;
 import com.example.coursekb.vo.TeacherProfileVO;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,8 +22,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +39,7 @@ public class TeacherProfileService {
     private final TextChunkRepository textChunkRepository;
     private final ExamQuestionRepository examQuestionRepository;
     private final TeacherProfileRepository teacherProfileRepository;
+    private final TeacherProfileEvidenceRepository teacherProfileEvidenceRepository;
     private final ObjectMapper objectMapper;
 
     public TeacherProfileService(
@@ -43,6 +49,7 @@ public class TeacherProfileService {
             TextChunkRepository textChunkRepository,
             ExamQuestionRepository examQuestionRepository,
             TeacherProfileRepository teacherProfileRepository,
+            TeacherProfileEvidenceRepository teacherProfileEvidenceRepository,
             ObjectMapper objectMapper) {
         this.courseService = courseService;
         this.deepSeekService = deepSeekService;
@@ -50,6 +57,7 @@ public class TeacherProfileService {
         this.textChunkRepository = textChunkRepository;
         this.examQuestionRepository = examQuestionRepository;
         this.teacherProfileRepository = teacherProfileRepository;
+        this.teacherProfileEvidenceRepository = teacherProfileEvidenceRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -85,10 +93,13 @@ public class TeacherProfileService {
                     source,
                     request.getModel(),
                     8192);
-            applyAnalysis(profile, parseJson(json));
+            JsonNode root = parseJson(json);
+            applyAnalysis(profile, root);
             profile.setAnalysisStatus("SUCCESS");
             profile.setLastAnalyzedTime(LocalDateTime.now());
-            return TeacherProfileVO.from(teacherProfileRepository.save(profile));
+            TeacherProfile saved = teacherProfileRepository.save(profile);
+            saveEvidence(saved, root.path("evidence"), materials);
+            return TeacherProfileVO.from(saved);
         } catch (RuntimeException exception) {
             profile.setAnalysisStatus("FAILED");
             profile.setSourceSummary("分析失败：" + exception.getMessage());
@@ -96,6 +107,29 @@ public class TeacherProfileService {
             teacherProfileRepository.save(profile);
             throw exception;
         }
+    }
+
+    public List<TeacherProfileEvidenceVO> listEvidence(Long profileId, Long userId) {
+        TeacherProfile profile = getOwnedProfile(profileId, userId);
+        courseService.getOwnedCourse(profile.getCourseId(), userId);
+        List<TeacherProfileEvidence> evidenceList = teacherProfileEvidenceRepository
+                .findByTeacherProfileIdOrderByConfidenceScoreDescIdAsc(profileId);
+        if (evidenceList.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Map<Long, Material> materialById = materialRepository.findAllById(
+                        evidenceList.stream().map(TeacherProfileEvidence::getMaterialId).collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.toMap(Material::getId, Function.identity()));
+        return evidenceList.stream()
+                .map(evidence -> {
+                    Material material = materialById.get(evidence.getMaterialId());
+                    return TeacherProfileEvidenceVO.from(
+                            evidence,
+                            material == null ? "未知资料" : material.getTitle(),
+                            material == null ? null : material.getMaterialType());
+                })
+                .collect(Collectors.toList());
     }
 
     private List<Material> resolveMaterials(Long courseId, List<Long> materialIds) {
@@ -113,6 +147,11 @@ public class TeacherProfileService {
         return selected;
     }
 
+    private TeacherProfile getOwnedProfile(Long profileId, Long userId) {
+        return teacherProfileRepository.findByIdAndUserId(profileId, userId)
+                .orElseThrow(() -> new BusinessException("教师画像不存在或无权访问"));
+    }
+
     private String buildSource(Course course, List<Material> materials) {
         StringBuilder source = new StringBuilder();
         appendLimited(source, "课程：" + course.getCourseName() + "\n");
@@ -120,6 +159,7 @@ public class TeacherProfileService {
         appendLimited(source, "## 课程资料\n\n");
         for (Material material : materials) {
             appendLimited(source, "### " + material.getTitle() + "\n");
+            appendLimited(source, "- 资料ID：" + material.getId() + "\n");
             appendLimited(source, "- 类型：" + material.getMaterialType() + "\n");
             appendLimited(source, "- 年份：" + valueOrDefault(material.getYear(), "未知") + "\n");
             appendLimited(source, "- 摘要：" + valueOrDefault(material.getSummary(), "无") + "\n");
@@ -167,10 +207,43 @@ public class TeacherProfileService {
                 + "{\"confidenceScore\":80,\"examStyle\":\"出题风格\","
                 + "\"questionPreference\":\"题型偏好\",\"gradingPreference\":\"评分偏好\","
                 + "\"focusTopics\":[\"重点章节或主题\"],\"avoidTopics\":[\"低优先内容\"],"
-                + "\"sourceSummary\":\"分析依据摘要\"}。"
+                + "\"sourceSummary\":\"分析依据摘要\","
+                + "\"evidence\":[{\"materialId\":1,\"evidenceType\":\"EXAM_STYLE|QUESTION_TYPE|GRADING|FOCUS_TOPIC|AVOID_TOPIC\","
+                + "\"evidenceSummary\":\"证据摘要\",\"sourcePage\":1,\"confidenceScore\":80}]}。"
                 + "要求：必须使用中文；confidenceScore 为 0-100；"
+                + "evidence 最多 12 条，materialId 必须来自资料上下文中的资料ID；"
                 + "只能依据给定资料和真题，不要虚构教师行为；"
                 + "如果证据不足，需要降低置信度并在 sourceSummary 中说明。";
+    }
+
+    private void saveEvidence(TeacherProfile profile, JsonNode evidenceNode, List<Material> materials) {
+        teacherProfileEvidenceRepository.deleteByTeacherProfileId(profile.getId());
+        if (evidenceNode == null || !evidenceNode.isArray()) {
+            return;
+        }
+        Set<Long> materialIds = materials.stream().map(Material::getId).collect(Collectors.toSet());
+        List<TeacherProfileEvidence> evidenceList = new ArrayList<>();
+        for (JsonNode node : evidenceNode) {
+            Long materialId = node.path("materialId").canConvertToLong()
+                    ? node.path("materialId").asLong()
+                    : null;
+            String summary = text(node.path("evidenceSummary"));
+            if (materialId == null || !materialIds.contains(materialId) || summary.isEmpty()) {
+                continue;
+            }
+            TeacherProfileEvidence evidence = new TeacherProfileEvidence();
+            evidence.setTeacherProfileId(profile.getId());
+            evidence.setMaterialId(materialId);
+            evidence.setEvidenceType(normalizeEvidenceType(text(node.path("evidenceType"))));
+            evidence.setEvidenceSummary(summary);
+            evidence.setSourcePage(node.path("sourcePage").isInt() ? node.path("sourcePage").asInt() : null);
+            evidence.setConfidenceScore(normalizeConfidence(node.path("confidenceScore")));
+            evidenceList.add(evidence);
+            if (evidenceList.size() >= 12) {
+                break;
+            }
+        }
+        teacherProfileEvidenceRepository.saveAll(evidenceList);
     }
 
     private void applyAnalysis(TeacherProfile profile, JsonNode root) {
@@ -212,6 +285,16 @@ public class TeacherProfileService {
         }
         BigDecimal max = new BigDecimal("100");
         return value.compareTo(max) > 0 ? max : value;
+    }
+
+    private String normalizeEvidenceType(String value) {
+        if ("QUESTION_TYPE".equals(value)
+                || "GRADING".equals(value)
+                || "FOCUS_TOPIC".equals(value)
+                || "AVOID_TOPIC".equals(value)) {
+            return value;
+        }
+        return "EXAM_STYLE";
     }
 
     private String nodeToText(JsonNode node) {
