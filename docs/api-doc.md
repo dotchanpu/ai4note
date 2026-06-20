@@ -1223,6 +1223,42 @@ CANCELED
 
 当前支持 `ZIP` 格式。导出范围支持按章节、资料类型、重点资料筛选；可选择是否包含高频考点统计，以及是否包含前置课程、关联课程、后续课程的重点内容。
 
+### 15.3 预览导出内容
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/exports/preview`
+
+请求体同导出课程知识包接口。该接口不会生成 ZIP，也不会写入 `export_record`；后端会复用实际导出的筛选和关联课程聚合逻辑，返回当前导出范围将包含的课程、章节、资料、知识条目、考点统计和关联课程内容。
+
+响应示例：
+
+```json
+{
+  "courseId": 1,
+  "courseName": "数据结构",
+  "templateId": 1,
+  "templateName": "通用 Agent 知识包",
+  "exportName": "数据结构期末知识包",
+  "exportFormat": "ZIP",
+  "summary": {
+    "chapterCount": 8,
+    "materialCount": 12,
+    "parsedMaterialCount": 10,
+    "knowledgeItemCount": 86,
+    "examStatCount": 24,
+    "relatedCourseCount": 1,
+    "relatedMaterialCount": 3,
+    "relatedKnowledgeItemCount": 18
+  },
+  "chapters": [],
+  "materials": [],
+  "knowledgeItems": [],
+  "examStats": [],
+  "relatedCourses": []
+}
+```
+
 关联课程导出规则：
 
 - `includePrerequisiteCourses`：包含当前课程前置课程的重点资料和重点知识。
@@ -1257,7 +1293,7 @@ source/related-course-files.md
 
 成功后会在 `storage/exports/` 下生成 ZIP 文件，并写入 `export_record`。
 
-### 15.3 查询导出记录
+### 15.4 查询导出记录
 
 - 状态：已实现
 - 方法：`GET`
@@ -1270,7 +1306,7 @@ source/related-course-files.md
 | `userId` | 是 | 当前用户 ID |
 | `courseId` | 否 | 课程 ID；传入时只查询该课程导出记录 |
 
-### 15.4 下载导出知识包
+### 15.5 下载导出知识包
 
 - 状态：已实现
 - 方法：`GET`
