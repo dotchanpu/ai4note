@@ -1,6 +1,8 @@
 package com.example.coursekb.vo;
 
 public class MaterialSearchResultVO {
+    private String resultType;
+    private Long knowledgeItemId;
     private Long materialId;
     private Long courseId;
     private Long chapterId;
@@ -18,6 +20,24 @@ public class MaterialSearchResultVO {
     private String matchSource;
     private Integer matchedPageNo;
     private String matchedSnippet;
+    private String itemType;
+    private Integer importanceLevel;
+
+    public String getResultType() {
+        return resultType;
+    }
+
+    public void setResultType(String resultType) {
+        this.resultType = resultType;
+    }
+
+    public Long getKnowledgeItemId() {
+        return knowledgeItemId;
+    }
+
+    public void setKnowledgeItemId(Long knowledgeItemId) {
+        this.knowledgeItemId = knowledgeItemId;
+    }
 
     public Long getMaterialId() {
         return materialId;
@@ -153,5 +173,21 @@ public class MaterialSearchResultVO {
 
     public void setMatchedSnippet(String matchedSnippet) {
         this.matchedSnippet = matchedSnippet;
+    }
+
+    public String getItemType() {
+        return itemType;
+    }
+
+    public void setItemType(String itemType) {
+        this.itemType = itemType;
+    }
+
+    public Integer getImportanceLevel() {
+        return importanceLevel;
+    }
+
+    public void setImportanceLevel(Integer importanceLevel) {
+        this.importanceLevel = importanceLevel;
     }
 }

@@ -12,8 +12,9 @@
 - 课程章节列表、章节创建、信息修改与删除；删除章节时保留资料并解除章节关联
 - 课程资料上传、连续上传、文件落盘、分类展示、详情修改与文件清理删除
 - PDF 按页提取、无意义换行清理、段落/句子感知分块、覆盖解析与清晰文本预览
-- 课程内资料标题、摘要和 PDF 正文检索，支持章节、资料类型和重点标记筛选
+- 统一检索资料标题、摘要、标签、PDF 正文和知识条目，支持章节、资料类型和重点标记筛选
 - DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
+- AI 基于资料完整语义整理标签与知识条目，保留类型、页码和重要程度
 - 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
 - Vue 前端基础工作台
@@ -180,6 +181,8 @@ GET  /api/materials/{materialId}/text-chunks?userId={userId}
 GET  /api/search?userId={userId}&courseId={courseId}&keyword={keyword}
 GET  /api/ai/status
 POST /api/ai/chat
+GET  /api/courses/{courseId}/knowledge-items?userId={userId}
+POST /api/materials/{materialId}/knowledge-items/ai-generate?userId={userId}
 ```
 
 完整接口说明见 [`docs/api-doc.md`](docs/api-doc.md)。

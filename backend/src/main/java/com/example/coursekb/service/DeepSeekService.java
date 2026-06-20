@@ -99,6 +99,65 @@ public class DeepSeekService {
         }
     }
 
+    public String generateJson(
+            Long userId,
+            Long courseId,
+            String systemPrompt,
+            String userPrompt,
+            String requestedModel,
+            int maxTokens) {
+        ensureConfigured();
+        courseService.getOwnedCourse(courseId, userId);
+        String model = normalizeModel(requestedModel);
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> system = new LinkedHashMap<>();
+        system.put("role", "system");
+        system.put("content", systemPrompt);
+        messages.add(system);
+        Map<String, String> user = new LinkedHashMap<>();
+        user.put("role", "user");
+        user.put("content", userPrompt);
+        messages.add(user);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", messages);
+        body.put("stream", false);
+        body.put("max_tokens", normalizeMaxTokens(maxTokens));
+        body.put("user_id", "ai4note-" + userId);
+        Map<String, String> responseFormat = new LinkedHashMap<>();
+        responseFormat.put("type", "json_object");
+        body.put("response_format", responseFormat);
+        Map<String, String> thinkingConfig = new LinkedHashMap<>();
+        thinkingConfig.put("type", "disabled");
+        body.put("thinking", thinkingConfig);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        try {
+            ResponseEntity<JsonNode> response = restTemplate.exchange(
+                    baseUrl + "/chat/completions",
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    JsonNode.class);
+            JsonNode root = response.getBody();
+            if (root == null || !root.path("choices").isArray() || root.path("choices").isEmpty()) {
+                throw new BusinessException("DeepSeek 返回了空响应");
+            }
+            String content = textOrNull(root.path("choices").get(0).path("message").path("content"));
+            if (content == null || content.trim().isEmpty()) {
+                throw new BusinessException("DeepSeek 未返回结构化内容");
+            }
+            return content;
+        } catch (HttpStatusCodeException exception) {
+            throw mapProviderError(exception);
+        } catch (RestClientException exception) {
+            throw new BusinessException("DeepSeek 服务连接失败，请稍后重试");
+        }
+    }
+
     private List<Map<String, String>> buildMessages(Course course, String userMessage) {
         List<Map<String, String>> messages = new ArrayList<>();
         Map<String, String> system = new LinkedHashMap<>();

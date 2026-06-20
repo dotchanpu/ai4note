@@ -320,7 +320,7 @@
                 <p class="eyebrow">course search</p>
                 <h2>找到你记得的<br>那一小段<span>.</span></h2>
               </div>
-              <p>检索资料标题、摘要和 PDF 解析正文，并按章节、类型和重点标记缩小范围。</p>
+              <p>统一检索资料标题、摘要、标签、PDF 正文，以及 AI 整理出的知识条目。</p>
             </div>
 
             <div class="search-panel">
@@ -329,7 +329,7 @@
                   v-model="searchForm.keyword"
                   clearable
                   maxlength="255"
-                  placeholder="输入知识点、题目关键词或资料名称"
+                  placeholder="输入知识点、标签、题目关键词或资料名称"
                   @keyup.enter="runSearch"
                 />
                 <button type="button" :disabled="searchLoading" @click="runSearch">
@@ -368,23 +368,41 @@
             </div>
 
             <div v-loading="searchLoading" class="search-results">
-              <article v-for="(result, index) in searchResults" :key="result.materialId" class="search-result-card">
+              <article
+                v-for="(result, index) in searchResults"
+                :key="`${result.resultType}-${result.knowledgeItemId || result.materialId}`"
+                class="search-result-card"
+                :class="{ 'search-result-knowledge': result.resultType === 'KNOWLEDGE_ITEM' }"
+              >
                 <div class="search-result-index">{{ String(index + 1).padStart(2, '0') }}</div>
                 <div class="search-result-content">
                   <div class="search-result-meta">
-                    <span>{{ materialTypeLabel(result.materialType) }}</span>
+                    <span>{{ result.resultType === 'KNOWLEDGE_ITEM' ? '知识条目' : '资料' }}</span>
+                    <span v-if="result.itemType">{{ knowledgeTypeLabel(result.itemType) }}</span>
+                    <span v-else>{{ materialTypeLabel(result.materialType) }}</span>
                     <span>{{ result.chapterTitle || '未关联章节' }}</span>
                     <span v-if="result.matchedPageNo">第 {{ result.matchedPageNo }} 页</span>
                     <span v-if="result.key">重点</span>
+                    <span v-if="result.importanceLevel">重要度 {{ result.importanceLevel }}</span>
                   </div>
                   <h3>{{ result.title }}</h3>
                   <p>{{ result.matchedSnippet || result.summary || '命中该资料' }}</p>
-                  <small>{{ matchSourceLabel(result.matchSource) }} · {{ result.originalName }}</small>
+                  <small>
+                    {{ matchSourceLabel(result.matchSource) }}
+                    <template v-if="result.originalName"> · {{ result.originalName }}</template>
+                  </small>
                 </div>
                 <div class="search-result-actions">
-                  <button type="button" @click="editSearchResult(result)">查看资料</button>
                   <button
-                    v-if="result.parsedChunkCount > 0"
+                    v-if="result.resultType === 'KNOWLEDGE_ITEM'"
+                    type="button"
+                    @click="openKnowledgeResult"
+                  >
+                    前往知识库
+                  </button>
+                  <button v-else type="button" @click="editSearchResult(result)">查看资料</button>
+                  <button
+                    v-if="result.materialId && result.parsedChunkCount > 0"
                     type="button"
                     @click="previewSearchResult(result)"
                   >
@@ -400,6 +418,121 @@
               <div v-if="!searchLoading && !searchHasRun" class="search-empty">
                 <strong>输入一个关键词开始。</strong>
                 <p>例如“二叉树遍历”“实验报告”或“2024 期末”。</p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="knowledge"
+            class="knowledge-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'knowledge' }"
+          >
+            <div class="knowledge-heading">
+              <div>
+                <p class="eyebrow light">ai knowledge studio</p>
+                <h2>不是摘词，<br>是理解后整理<span>.</span></h2>
+              </div>
+              <p>选择一份已经解析的 PDF，让 DeepSeek 按语义整理定义、重点、方法、公式、例子与易错点。</p>
+            </div>
+
+            <div class="knowledge-generator">
+              <div class="knowledge-generator-main">
+                <el-select
+                  v-model="knowledgeForm.materialId"
+                  filterable
+                  placeholder="选择已解析资料"
+                  @change="loadSelectedMaterialTags"
+                >
+                  <el-option
+                    v-for="material in parsedMaterials"
+                    :key="material.id"
+                    :label="material.title"
+                    :value="material.id"
+                  />
+                </el-select>
+                <el-input-number v-model="knowledgeForm.maxItems" :min="1" :max="30" />
+                <label class="knowledge-replace">
+                  <el-switch v-model="knowledgeForm.replaceExisting" />
+                  <span>替换该资料旧条目</span>
+                </label>
+                <button
+                  type="button"
+                  class="knowledge-generate-button"
+                  :disabled="knowledgeGenerating || !knowledgeForm.materialId"
+                  @click="generateKnowledge"
+                >
+                  <span>{{ knowledgeGenerating ? 'AI 整理中…' : 'AI 整理知识' }}</span>
+                  <strong>✦</strong>
+                </button>
+              </div>
+              <p>生成数量</p>
+            </div>
+
+            <div v-if="knowledgeForm.materialId" class="knowledge-tags-panel">
+              <div>
+                <strong>资料标签</strong>
+                <span>AI 生成后仍可手动调整</span>
+              </div>
+              <el-select
+                v-model="selectedMaterialTags"
+                multiple
+                filterable
+                allow-create
+                default-first-option
+                placeholder="输入标签后回车"
+              >
+                <el-option v-for="tag in courseTags" :key="tag" :label="tag" :value="tag" />
+              </el-select>
+              <button type="button" :disabled="tagSaving" @click="saveSelectedMaterialTags">
+                {{ tagSaving ? '保存中…' : '保存标签' }}
+              </button>
+            </div>
+
+            <div class="knowledge-toolbar">
+              <div>
+                <strong>{{ knowledgeItems.length }}</strong>
+                <span>knowledge items</span>
+              </div>
+              <el-select
+                v-model="knowledgeFilterType"
+                clearable
+                placeholder="全部类型"
+                @change="loadKnowledgeItems"
+              >
+                <el-option
+                  v-for="option in knowledgeTypeOptions"
+                  :key="option.type"
+                  :label="option.label"
+                  :value="option.type"
+                />
+              </el-select>
+            </div>
+
+            <div v-loading="knowledgeLoading" class="knowledge-grid">
+              <article
+                v-for="item in knowledgeItems"
+                :key="item.id"
+                class="knowledge-card"
+                :class="`knowledge-card-${item.itemType.toLowerCase()}`"
+              >
+                <div class="knowledge-card-top">
+                  <span>{{ knowledgeTypeLabel(item.itemType) }}</span>
+                  <div class="knowledge-stars">{{ '●'.repeat(item.importanceLevel) }}</div>
+                </div>
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.content }}</p>
+                <div class="knowledge-source">
+                  <span>{{ item.materialTitle || '人工整理' }}</span>
+                  <span v-if="item.sourcePage">第 {{ item.sourcePage }} 页</span>
+                  <span>{{ item.chapterTitle || '未关联章节' }}</span>
+                </div>
+                <button type="button" class="danger-text" @click="confirmKnowledgeDeletion(item)">
+                  删除条目
+                </button>
+              </article>
+              <div v-if="!knowledgeLoading && knowledgeItems.length === 0" class="knowledge-empty">
+                <strong>还没有知识条目。</strong>
+                <p>先解析一份 PDF，再让 AI 从完整语义中整理知识。</p>
               </div>
             </div>
           </section>
@@ -743,6 +876,14 @@ import {
   uploadMaterial
 } from '../../api/material'
 import { searchMaterials } from '../../api/search'
+import {
+  deleteKnowledgeItem,
+  generateKnowledgeItems,
+  listCourseTags,
+  listKnowledgeItems,
+  listMaterialTags,
+  replaceMaterialTags
+} from '../../api/knowledge'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -752,6 +893,9 @@ const chapterLoading = ref(false)
 const materialLoading = ref(false)
 const searchLoading = ref(false)
 const searchHasRun = ref(false)
+const knowledgeLoading = ref(false)
+const knowledgeGenerating = ref(false)
+const tagSaving = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
@@ -771,6 +915,10 @@ const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
 const searchResults = ref([])
+const knowledgeItems = ref([])
+const courseTags = ref([])
+const selectedMaterialTags = ref([])
+const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
@@ -782,7 +930,8 @@ const pageSections = [
   { id: 'overview', label: 'overview.', title: '课程概览' },
   { id: 'chapters', label: 'chapters.', title: '章节路径' },
   { id: 'materials', label: 'materials.', title: '课程资料' },
-  { id: 'search', label: 'search.', title: '课程检索' }
+  { id: 'search', label: 'search.', title: '课程检索' },
+  { id: 'knowledge', label: 'knowledge.', title: '知识条目' }
 ]
 
 const materialTypeOptions = [
@@ -799,9 +948,23 @@ const materialGroups = computed(() => materialTypeOptions.map(group => ({
   items: materials.value.filter(material => material.materialType === group.type)
 })))
 
+const parsedMaterials = computed(() => materials.value.filter(
+  material => material.parsedChunkCount > 0
+))
+
+const knowledgeTypeOptions = [
+  { type: 'DEFINITION', label: '定义' },
+  { type: 'KEY_POINT', label: '重点' },
+  { type: 'FORMULA', label: '公式' },
+  { type: 'METHOD', label: '方法' },
+  { type: 'EXAMPLE', label: '例子' },
+  { type: 'WARNING', label: '易错点' }
+]
+
 const deleteDialogTitle = computed(() => {
   if (deleteTarget.value?.type === 'course') return '删除这门课程'
   if (deleteTarget.value?.type === 'chapter') return '删除这个章节'
+  if (deleteTarget.value?.type === 'knowledge') return '删除这条知识'
   return '删除这份资料'
 })
 
@@ -811,6 +974,9 @@ const deleteDialogDescription = computed(() => {
   }
   if (deleteTarget.value?.type === 'chapter') {
     return '章节会被删除，但其中的资料将保留并变为未关联章节。'
+  }
+  if (deleteTarget.value?.type === 'knowledge') {
+    return '该知识条目会从课程知识库中移除，原始资料和解析文本不会受影响。'
   }
   return '原始文件、解析文本和相关数据都会一并删除。'
 })
@@ -848,6 +1014,12 @@ const searchForm = reactive({
   chapterId: null,
   materialType: null,
   isKey: false
+})
+
+const knowledgeForm = reactive({
+  materialId: null,
+  maxItems: 12,
+  replaceExisting: false
 })
 
 onMounted(() => {
@@ -911,6 +1083,9 @@ async function selectCourse(course) {
   selectedCourse.value = course
   activeSection.value = 'overview'
   resetSearch()
+  knowledgeForm.materialId = null
+  selectedMaterialTags.value = []
+  knowledgeFilterType.value = null
   chapterLoading.value = true
   materialLoading.value = true
   try {
@@ -920,12 +1095,103 @@ async function selectCourse(course) {
     ])
     chapters.value = chapterData
     materials.value = materialData
+    await Promise.all([loadKnowledgeItems(), loadCourseTags()])
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     chapterLoading.value = false
     materialLoading.value = false
   }
+}
+
+async function loadKnowledgeItems() {
+  if (!selectedCourse.value) return
+  knowledgeLoading.value = true
+  try {
+    knowledgeItems.value = await listKnowledgeItems(
+      selectedCourse.value.id,
+      currentUser.value.id,
+      {
+        itemType: knowledgeFilterType.value || undefined
+      }
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    knowledgeLoading.value = false
+  }
+}
+
+async function loadCourseTags() {
+  if (!selectedCourse.value) return
+  try {
+    courseTags.value = await listCourseTags(selectedCourse.value.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function loadSelectedMaterialTags() {
+  if (!knowledgeForm.materialId) {
+    selectedMaterialTags.value = []
+    return
+  }
+  try {
+    selectedMaterialTags.value = await listMaterialTags(
+      knowledgeForm.materialId,
+      currentUser.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function saveSelectedMaterialTags() {
+  if (!knowledgeForm.materialId) return
+  tagSaving.value = true
+  try {
+    selectedMaterialTags.value = await replaceMaterialTags(
+      knowledgeForm.materialId,
+      currentUser.value.id,
+      selectedMaterialTags.value
+    )
+    await loadCourseTags()
+    ElMessage.success('标签已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    tagSaving.value = false
+  }
+}
+
+async function generateKnowledge() {
+  if (!knowledgeForm.materialId) {
+    ElMessage.warning('请选择已解析资料')
+    return
+  }
+  knowledgeGenerating.value = true
+  try {
+    const result = await generateKnowledgeItems(
+      knowledgeForm.materialId,
+      currentUser.value.id,
+      {
+        maxItems: knowledgeForm.maxItems,
+        replaceExisting: knowledgeForm.replaceExisting,
+        model: 'deepseek-v4-flash'
+      }
+    )
+    selectedMaterialTags.value = result.tags
+    await Promise.all([loadKnowledgeItems(), loadCourseTags()])
+    ElMessage.success(`AI 已整理 ${result.items.length} 条知识`)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    knowledgeGenerating.value = false
+  }
+}
+
+function knowledgeTypeLabel(type) {
+  return knowledgeTypeOptions.find(option => option.type === type)?.label || type
 }
 
 async function runSearch() {
@@ -967,6 +1233,9 @@ function materialTypeLabel(type) {
 function matchSourceLabel(source) {
   if (source === 'TITLE') return '标题命中'
   if (source === 'SUMMARY') return '摘要命中'
+  if (source === 'TAG') return '标签命中'
+  if (source === 'KNOWLEDGE_TITLE') return '知识标题命中'
+  if (source === 'KNOWLEDGE_CONTENT') return '知识内容命中'
   return '正文命中'
 }
 
@@ -993,6 +1262,10 @@ function editSearchResult(result) {
 
 function previewSearchResult(result) {
   showParsedText(searchResultMaterial(result))
+}
+
+function openKnowledgeResult() {
+  activeSection.value = 'knowledge'
 }
 
 function handleFileChange(uploadFile) {
@@ -1197,6 +1470,15 @@ function confirmMaterialDeletion(material = null) {
   deleteDialogVisible.value = true
 }
 
+function confirmKnowledgeDeletion(item) {
+  deleteTarget.value = {
+    type: 'knowledge',
+    id: item.id,
+    name: item.title
+  }
+  deleteDialogVisible.value = true
+}
+
 async function executeDeletion() {
   if (!deleteTarget.value) return
   deleteLoading.value = true
@@ -1205,11 +1487,28 @@ async function executeDeletion() {
       await removeCourse(deleteTarget.value.id)
     } else if (deleteTarget.value.type === 'chapter') {
       await removeChapter(deleteTarget.value.id)
+    } else if (deleteTarget.value.type === 'knowledge') {
+      await removeKnowledgeItem(deleteTarget.value.id)
     } else {
       await removeMaterial(deleteTarget.value.id)
     }
   } finally {
     deleteLoading.value = false
+  }
+}
+
+async function removeKnowledgeItem(itemId) {
+  try {
+    await deleteKnowledgeItem(
+      selectedCourse.value.id,
+      itemId,
+      currentUser.value.id
+    )
+    knowledgeItems.value = knowledgeItems.value.filter(item => item.id !== itemId)
+    deleteDialogVisible.value = false
+    ElMessage.success('知识条目已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
   }
 }
 
@@ -2642,6 +2941,14 @@ button {
   box-shadow: 7px 7px 0 #14cbea;
 }
 
+.search-result-card.search-result-knowledge {
+  box-shadow: inset 5px 0 0 #ad93ff;
+}
+
+.search-result-card.search-result-knowledge:hover {
+  box-shadow: 7px 7px 0 #ad93ff, inset 5px 0 0 #ad93ff;
+}
+
 .search-result-index {
   width: 48px;
   height: 48px;
@@ -2733,6 +3040,269 @@ button {
 }
 
 .search-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.knowledge-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #111;
+}
+
+.knowledge-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.knowledge-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.knowledge-heading h2 span {
+  color: #ad93ff;
+}
+
+.knowledge-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.knowledge-generator {
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #fff;
+  background: #191919;
+  box-shadow: 10px 10px 0 #ad93ff;
+}
+
+.knowledge-generator-main {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 130px auto 190px;
+  gap: 12px;
+  align-items: center;
+}
+
+:deep(.knowledge-generator .el-select__wrapper),
+:deep(.knowledge-generator .el-input__wrapper),
+:deep(.knowledge-toolbar .el-select__wrapper),
+:deep(.knowledge-tags-panel .el-select__wrapper) {
+  min-height: 50px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.knowledge-replace {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.knowledge-generate-button {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  background: #ad93ff;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.knowledge-generate-button strong {
+  font-size: 20px;
+}
+
+.knowledge-generate-button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.knowledge-generator > p {
+  margin: 8px 0 0;
+  padding-left: calc(100% - 190px - 12px - 130px - 12px - 210px);
+  color: #888;
+  font-size: 10px;
+}
+
+.knowledge-tags-panel {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 110px;
+  gap: 14px;
+  align-items: center;
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #555;
+  background: #171717;
+}
+
+.knowledge-tags-panel strong,
+.knowledge-tags-panel span {
+  display: block;
+}
+
+.knowledge-tags-panel span {
+  margin-top: 5px;
+  color: #888;
+  font-size: 10px;
+}
+
+.knowledge-tags-panel button {
+  min-height: 48px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #111;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.knowledge-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 52px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #555;
+}
+
+.knowledge-toolbar > div strong,
+.knowledge-toolbar > div span {
+  display: block;
+}
+
+.knowledge-toolbar > div strong {
+  font-size: 40px;
+  letter-spacing: -0.06em;
+}
+
+.knowledge-toolbar > div span {
+  color: #888;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.knowledge-toolbar .el-select {
+  width: 190px;
+}
+
+.knowledge-grid {
+  min-height: 260px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.knowledge-card {
+  --knowledge-accent: #ad93ff;
+  position: relative;
+  padding: 24px;
+  border: 1px solid #555;
+  background: #181818;
+  box-shadow: inset 0 5px 0 var(--knowledge-accent);
+}
+
+.knowledge-card-definition { --knowledge-accent: #14cbea; }
+.knowledge-card-key_point { --knowledge-accent: #ffb21c; }
+.knowledge-card-formula { --knowledge-accent: #ad93ff; }
+.knowledge-card-method { --knowledge-accent: #0de0c0; }
+.knowledge-card-example { --knowledge-accent: #ffc0d0; }
+.knowledge-card-warning { --knowledge-accent: #ff3151; }
+
+.knowledge-card-top,
+.knowledge-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.knowledge-card-top {
+  justify-content: space-between;
+}
+
+.knowledge-card-top > span {
+  padding: 5px 9px;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.knowledge-stars {
+  color: var(--knowledge-accent);
+  font-size: 8px;
+  letter-spacing: 4px;
+}
+
+.knowledge-card h3 {
+  margin: 21px 0 12px;
+  font-size: 27px;
+  letter-spacing: -0.045em;
+}
+
+.knowledge-card > p {
+  margin: 0;
+  color: #d2d2d2;
+  font-size: 14px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
+.knowledge-source {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #444;
+  color: #999;
+  font-size: 10px;
+}
+
+.knowledge-card > button {
+  display: block;
+  margin: 16px 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.knowledge-empty {
+  grid-column: 1 / -1;
+  min-height: 240px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.knowledge-empty strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.knowledge-empty p {
   margin: 10px 0 0;
   font-size: 12px;
 }
@@ -3448,7 +4018,8 @@ button {
 
   .section-intro,
   .material-title-row,
-  .search-heading {
+  .search-heading,
+  .knowledge-heading {
     display: block;
   }
 
@@ -3474,8 +4045,14 @@ button {
     margin-top: 24px;
   }
 
+  .knowledge-heading > p {
+    margin-top: 24px;
+  }
+
   .search-input-row,
-  .search-filters {
+  .search-filters,
+  .knowledge-generator-main,
+  .knowledge-tags-panel {
     grid-template-columns: 1fr;
   }
 
@@ -3487,6 +4064,14 @@ button {
     grid-column: 2;
     display: flex;
     justify-items: start;
+  }
+
+  .knowledge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-generator > p {
+    display: none;
   }
 
   .material-groups {

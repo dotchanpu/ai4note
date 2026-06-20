@@ -488,25 +488,54 @@ OTHER
 
 ### 9.1 查询标签
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
-- 路径：`/api/tags`
+- 路径：`/api/courses/{courseId}/tags`
+
+查询参数：`userId`。返回当前课程资料已经使用的标签名称数组。
 
 ### 9.2 为资料绑定标签
 
-- 状态：规划中
-- 方法：`POST`
+- 状态：已实现
+- 方法：`PUT`
 - 路径：`/api/materials/{materialId}/tags`
+
+查询参数：`userId`。
+
+请求体：
+
+```json
+{
+  "tagNames": ["编译原理", "词法分析", "有限自动机"]
+}
+```
+
+该接口会整体替换资料标签，自动复用或创建标签。单份资料最多绑定 20 个标签。
+
+查询单份资料标签：
+
+```text
+GET /api/materials/{materialId}/tags?userId={userId}
+```
 
 ### 9.3 查询课程知识条目
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/knowledge-items`
 
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `materialId` | 否 | 按来源资料筛选 |
+| `chapterId` | 否 | 按章节筛选 |
+| `itemType` | 否 | 按知识类型筛选 |
+
 ### 9.4 创建知识条目
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/knowledge-items`
 
@@ -523,6 +552,50 @@ OTHER
   "importanceLevel": 4
 }
 ```
+
+知识类型支持：
+
+```text
+DEFINITION
+KEY_POINT
+FORMULA
+METHOD
+EXAMPLE
+WARNING
+```
+
+修改和删除接口：
+
+```text
+PUT    /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
+DELETE /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
+```
+
+### 9.5 使用 AI 整理资料知识
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/{materialId}/knowledge-items/ai-generate`
+
+查询参数：`userId`。
+
+请求体：
+
+```json
+{
+  "maxItems": 12,
+  "replaceExisting": false,
+  "model": "deepseek-v4-flash"
+}
+```
+
+该接口要求资料已经完成 PDF 文本解析。系统将带页码的解析正文交给 DeepSeek，让模型基于完整语义整理：
+
+- 3 至 10 个资料标签；
+- 定义、重点、公式、方法、例子和易错点；
+- 每条知识的来源页码与 1 至 5 级重要程度。
+
+AI 被明确要求合并重复概念、禁止无依据补充，并以 JSON 结构返回。后端会再次校验类型、长度、数量和重要程度后落库。`replaceExisting=true` 时，会先清理该资料已有知识条目及其关联状态。
 
 ## 10. 资料检索
 
@@ -543,13 +616,21 @@ OTHER
 | `materialType` | 否 | 资料类型筛选 |
 | `isKey` | 否 | 是否只检索重点资料 |
 
-搜索范围包括资料标题、摘要和 PDF 解析正文。当前检索限定在一个课程内，后端会校验课程是否属于当前用户。
+搜索范围包括：
+
+- 资料标题与摘要；
+- 资料标签；
+- PDF 解析正文；
+- AI 或人工整理的知识条目标题与内容。
+
+当前检索限定在一个课程内，后端会校验课程是否属于当前用户。
 
 匹配规则：
 
-- 每份资料最多返回一条结果，最多返回 100 条。
+- 每份资料最多返回一条资料结果；知识条目按条返回；总数最多 100 条。
 - 排序优先级为标题命中、摘要命中、正文命中，同级按资料上传时间倒序。
 - 正文命中会返回首个匹配文本块的 PDF 页码。
+- 知识条目结果返回 `knowledgeItemId`、`itemType`、`importanceLevel` 和来源页码。
 - `matchedSnippet` 返回关键词附近最多约 220 个字符的上下文。
 - 每次成功检索都会写入 `search_record`，保存用户、课程、关键词、检索类型、结果数量和检索时间。
 
@@ -564,6 +645,8 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 ```json
 [
   {
+    "resultType": "MATERIAL",
+    "knowledgeItemId": null,
     "materialId": 11,
     "courseId": 4,
     "chapterId": 2,
@@ -585,13 +668,23 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 ]
 ```
 
+`resultType` 可选值：
+
+| 值 | 含义 |
+|---|---|
+| `MATERIAL` | 资料标题、摘要、标签或解析正文命中 |
+| `KNOWLEDGE_ITEM` | 知识条目标题或内容命中 |
+
 `matchSource` 可选值：
 
 | 值 | 含义 |
 |---|---|
 | `TITLE` | 资料标题命中 |
 | `SUMMARY` | 资料摘要命中 |
+| `TAG` | 资料标签命中 |
 | `CONTENT` | PDF 解析正文命中 |
+| `KNOWLEDGE_TITLE` | 知识条目标题命中 |
+| `KNOWLEDGE_CONTENT` | 知识条目内容命中 |
 
 ## 11. 真题知识点映射
 
