@@ -180,6 +180,59 @@ public class KnowledgeGapService {
                 .collect(Collectors.toList());
     }
 
+    public List<KnowledgeGapItemVO> listPrerequisiteHints(Long courseId, Long userId) {
+        Course course = courseService.getOwnedCourse(courseId, userId);
+        List<SourceCourse> sourceCourses = buildSourceCourses(course, userId, true)
+                .stream()
+                .filter(source -> source.relation != null)
+                .collect(Collectors.toList());
+        if (sourceCourses.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, SourceCourse> sourceByKnowledgeItemId = new HashMap<>();
+        List<KnowledgeItem> allItems = sourceCourses.stream()
+                .flatMap(source -> knowledgeItemRepository
+                        .findByCourseIdOrderByImportanceLevelDescIdDesc(source.course.getId())
+                        .stream()
+                        .map(item -> {
+                            sourceByKnowledgeItemId.put(item.getId(), source);
+                            return item;
+                        }))
+                .collect(Collectors.toList());
+        if (allItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, UserKnowledgeStatus> masteryByItemId = loadMastery(userId, allItems);
+        Map<Long, ExamKnowledgeStatVO> statByItemId = loadExamStats(sourceCourses, userId);
+        return allItems.stream()
+                .map(item -> {
+                    SourceCourse source = sourceByKnowledgeItemId.get(item.getId());
+                    UserKnowledgeStatus mastery = masteryByItemId.get(item.getId());
+                    ExamKnowledgeStatVO stat = statByItemId.get(item.getId());
+                    KnowledgeGapItem gap = buildGapItem(item, source, mastery, stat);
+                    if (gap == null) {
+                        return null;
+                    }
+                    return KnowledgeGapItemVO.from(
+                            gap,
+                            item.getTitle(),
+                            item.getItemType(),
+                            source.course.getCourseName(),
+                            source.relation.getRelationType(),
+                            mastery == null ? "UNKNOWN" : mastery.getMasteryStatus(),
+                            mastery == null ? null : mastery.getMasteryScore(),
+                            stat == null ? 0 : stat.getQuestionCount(),
+                            stat == null ? BigDecimal.ZERO : stat.getTotalScore(),
+                            stat == null ? null : stat.getLatestExamYear());
+                })
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(KnowledgeGapItemVO::getSeverityLevel).reversed()
+                        .thenComparing(KnowledgeGapItemVO::getKnowledgeItemId))
+                .collect(Collectors.toList());
+    }
+
     private KnowledgeGapReport getOwnedReport(Long reportId, Long userId) {
         return knowledgeGapReportRepository.findByIdAndUserId(reportId, userId)
                 .orElseThrow(() -> new BusinessException("知识缺口报告不存在或无权访问"));

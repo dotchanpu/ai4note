@@ -1020,7 +1020,15 @@ NEED_REVIEW
 - 根据掌握状态、掌握分数、真题命中次数和是否来自前置课程计算 `severityLevel`。
 - 明细 `gapType` 包括 `WEAK_MASTERY`、`NEED_REVIEW`、`HIGH_FREQUENCY`、`PREREQUISITE_GAP` 和 `UNASSESSED`。
 
-### 12.4 查询课程知识缺口报告列表
+### 12.4 查询前置课程知识缺口提示
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/prerequisite-gap-hints`
+
+查询参数：`userId`。后端只读取当前课程的 `PREREQUISITE` 关系，返回前置课程知识点中仍需要补齐的提示列表，不创建 `knowledge_gap_report` 记录。返回字段与知识缺口明细一致，包括知识点标题、来源前置课程、关系类型、掌握状态、真题命中次数、严重程度、原因和建议。
+
+### 12.5 查询课程知识缺口报告列表
 
 - 状态：已实现
 - 方法：`GET`
@@ -1028,7 +1036,7 @@ NEED_REVIEW
 
 查询参数：`userId`。按创建时间倒序返回该课程的历史知识缺口报告。
 
-### 12.5 查询知识缺口报告
+### 12.6 查询知识缺口报告
 
 - 状态：已实现
 - 方法：`GET`
@@ -1036,7 +1044,7 @@ NEED_REVIEW
 
 查询参数：`userId`。后端会校验报告归属和课程归属。
 
-### 12.6 查询知识缺口明细
+### 12.7 查询知识缺口明细
 
 - 状态：已实现
 - 方法：`GET`
