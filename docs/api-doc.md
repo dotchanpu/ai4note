@@ -1362,6 +1362,61 @@ CANCELED
 
 该接口用于后续异步生成流程回写状态。当前同步 AI 流程会由后端服务内部自动标记 `RUNNING`、`SUCCESS` 或 `FAILED`。
 
+### 14.13 基于教师画像生成模拟题
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/courses/{courseId}/mock-exams/generate`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherProfileId": 8,
+  "questionCount": 8,
+  "difficultyLevel": "MEDIUM",
+  "model": "deepseek-v4-flash",
+  "customRequirement": "增加一道综合设计题"
+}
+```
+
+后端会校验课程和教师画像归属，读取课程知识点与真题知识点高频统计，结合教师画像中的出题风格、题型偏好、评分偏好、重点章节和规避内容调用 DeepSeek 生成结构化模拟题。生成过程会写入 `ai_generation_task`，任务类型为 `MOCK_EXAM`；成功后将 Markdown 结果文件保存到 `storage-root/mock-exams/user-{userId}/course-{courseId}/`，并把相对路径写入 `resultPath`。
+
+响应示例：
+
+```json
+{
+  "task": {
+    "id": 120,
+    "userId": 1,
+    "courseId": 1,
+    "reviewProfileId": null,
+    "teacherProfileId": 8,
+    "providerConfigId": null,
+    "taskType": "MOCK_EXAM",
+    "prompt": "You are AI4Note's mock exam generation assistant...",
+    "status": "SUCCESS",
+    "resultPath": "mock-exams/user-1/course-1/mock-exam-20260621103000-task-120.md",
+    "errorMessage": null,
+    "createTime": "2026-06-21T10:29:40",
+    "finishTime": "2026-06-21T10:30:00"
+  },
+  "title": "数据结构模拟题",
+  "resultPath": "mock-exams/user-1/course-1/mock-exam-20260621103000-task-120.md",
+  "content": "# 数据结构模拟题\n\n...",
+  "questionCount": 8
+}
+```
+
+### 14.14 下载模拟题结果文件
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/mock-exams/{taskId}/download`
+
+查询参数：`userId`。仅允许下载当前用户名下、任务类型为 `MOCK_EXAM` 且状态为 `SUCCESS` 的任务结果文件。
+
 ## 15. Agent 知识包导出
 
 ### 15.1 查询导出模板
