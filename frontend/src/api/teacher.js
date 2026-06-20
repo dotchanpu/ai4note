@@ -17,3 +17,7 @@ export function listTeacherProfileEvidence(profileId, userId) {
     params: { userId }
   })
 }
+
+export function updateTeacherProfile(profileId, data) {
+  return request.put(`/teacher-profiles/${profileId}`, data)
+}

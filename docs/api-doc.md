@@ -921,11 +921,28 @@ UNREVIEWED
 
 ### 13.4 人工确认或修正教师画像
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`PUT`
 - 路径：`/api/teacher-profiles/{profileId}`
 
-确认后 `analysisStatus` 可更新为 `MANUAL_REVIEWED`。
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherName": "张老师",
+  "confidenceScore": 85,
+  "examStyle": "重视基础概念与综合应用",
+  "questionPreference": "简答题和设计题占比较高",
+  "gradingPreference": "过程分明显，强调关键步骤",
+  "focusTopics": "图、排序、查找",
+  "avoidTopics": "低频扩展阅读内容",
+  "sourceSummary": "基于近三年真题和课件重点修正",
+  "analysisStatus": "MANUAL_REVIEWED"
+}
+```
+
+确认后 `analysisStatus` 可更新为 `MANUAL_REVIEWED`。后端会校验画像归属，置信度会限制在 0 到 100。
 
 教师画像分析状态：
 

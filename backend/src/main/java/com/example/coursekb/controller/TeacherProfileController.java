@@ -1,6 +1,7 @@
 package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
+import com.example.coursekb.dto.TeacherProfileUpdateRequest;
 import com.example.coursekb.service.TeacherProfileService;
 import com.example.coursekb.vo.TeacherProfileEvidenceVO;
 import com.example.coursekb.vo.TeacherProfileVO;
@@ -9,6 +10,7 @@ import javax.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,5 +44,12 @@ public class TeacherProfileController {
             @PathVariable Long profileId,
             @RequestParam Long userId) {
         return teacherProfileService.listEvidence(profileId, userId);
+    }
+
+    @PutMapping("/teacher-profiles/{profileId}")
+    public TeacherProfileVO update(
+            @PathVariable Long profileId,
+            @Valid @RequestBody TeacherProfileUpdateRequest request) {
+        return teacherProfileService.update(profileId, request);
     }
 }

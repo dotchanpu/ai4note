@@ -829,7 +829,58 @@
                       <span>{{ teacherStatusLabel(selectedTeacherProfile.analysisStatus) }}</span>
                       <h3>{{ selectedTeacherProfile.teacherName }}</h3>
                     </div>
-                    <strong>{{ selectedTeacherProfile.confidenceScore ?? 0 }}%</strong>
+                    <div class="teacher-profile-score">
+                      <strong>{{ selectedTeacherProfile.confidenceScore ?? 0 }}%</strong>
+                      <button type="button" @click="openTeacherProfileEditor">编辑画像</button>
+                    </div>
+                  </div>
+                  <div v-if="teacherProfileEditing" class="teacher-edit-panel">
+                    <div class="teacher-edit-grid">
+                      <label>
+                        <span>教师名称</span>
+                        <el-input v-model="teacherEditForm.teacherName" maxlength="128" />
+                      </label>
+                      <label>
+                        <span>置信度</span>
+                        <el-input-number
+                          v-model="teacherEditForm.confidenceScore"
+                          :min="0"
+                          :max="100"
+                          :step="5"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label>
+                        <span>出题风格</span>
+                        <el-input v-model="teacherEditForm.examStyle" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>题型偏好</span>
+                        <el-input v-model="teacherEditForm.questionPreference" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>评分偏好</span>
+                        <el-input v-model="teacherEditForm.gradingPreference" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>重点章节</span>
+                        <el-input v-model="teacherEditForm.focusTopics" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>规避内容</span>
+                        <el-input v-model="teacherEditForm.avoidTopics" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>依据摘要</span>
+                        <el-input v-model="teacherEditForm.sourceSummary" type="textarea" :rows="3" />
+                      </label>
+                    </div>
+                    <div class="teacher-edit-actions">
+                      <button type="button" @click="cancelTeacherProfileEdit">取消</button>
+                      <button type="button" :disabled="teacherProfileSaving" @click="saveTeacherProfileEdit">
+                        {{ teacherProfileSaving ? '保存中…' : '保存并确认' }}
+                      </button>
+                    </div>
                   </div>
                   <div class="teacher-profile-grid">
                     <section>
@@ -1379,7 +1430,8 @@ import {
 import {
   analyzeTeacherProfile,
   listTeacherProfileEvidence,
-  listTeacherProfiles
+  listTeacherProfiles,
+  updateTeacherProfile
 } from '../../api/teacher'
 
 const currentUser = ref(null)
@@ -1400,6 +1452,8 @@ const gapItemLoading = ref(false)
 const teacherProfileLoading = ref(false)
 const teacherProfileAnalyzing = ref(false)
 const teacherEvidenceLoading = ref(false)
+const teacherProfileEditing = ref(false)
+const teacherProfileSaving = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1602,6 +1656,17 @@ const gapForm = reactive({
 const teacherProfileForm = reactive({
   teacherName: '',
   materialIds: []
+})
+
+const teacherEditForm = reactive({
+  teacherName: '',
+  confidenceScore: 50,
+  examStyle: '',
+  questionPreference: '',
+  gradingPreference: '',
+  focusTopics: '',
+  avoidTopics: '',
+  sourceSummary: ''
 })
 
 const exportForm = reactive({
@@ -1878,6 +1943,7 @@ async function runTeacherProfileAnalysis() {
 
 async function selectTeacherProfile(profile) {
   selectedTeacherProfile.value = profile
+  teacherProfileEditing.value = false
   teacherEvidenceLoading.value = true
   try {
     teacherProfileEvidence.value = await listTeacherProfileEvidence(profile.id, currentUser.value.id)
@@ -1885,6 +1951,54 @@ async function selectTeacherProfile(profile) {
     ElMessage.error(error.message)
   } finally {
     teacherEvidenceLoading.value = false
+  }
+}
+
+function openTeacherProfileEditor() {
+  if (!selectedTeacherProfile.value) return
+  teacherEditForm.teacherName = selectedTeacherProfile.value.teacherName || ''
+  teacherEditForm.confidenceScore = selectedTeacherProfile.value.confidenceScore ?? 50
+  teacherEditForm.examStyle = selectedTeacherProfile.value.examStyle || ''
+  teacherEditForm.questionPreference = selectedTeacherProfile.value.questionPreference || ''
+  teacherEditForm.gradingPreference = selectedTeacherProfile.value.gradingPreference || ''
+  teacherEditForm.focusTopics = selectedTeacherProfile.value.focusTopics || ''
+  teacherEditForm.avoidTopics = selectedTeacherProfile.value.avoidTopics || ''
+  teacherEditForm.sourceSummary = selectedTeacherProfile.value.sourceSummary || ''
+  teacherProfileEditing.value = true
+}
+
+function cancelTeacherProfileEdit() {
+  teacherProfileEditing.value = false
+}
+
+async function saveTeacherProfileEdit() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  if (!teacherEditForm.teacherName.trim()) {
+    ElMessage.warning('请输入教师名称')
+    return
+  }
+  teacherProfileSaving.value = true
+  try {
+    const profile = await updateTeacherProfile(selectedTeacherProfile.value.id, {
+      userId: currentUser.value.id,
+      teacherName: teacherEditForm.teacherName.trim(),
+      confidenceScore: teacherEditForm.confidenceScore,
+      examStyle: teacherEditForm.examStyle,
+      questionPreference: teacherEditForm.questionPreference,
+      gradingPreference: teacherEditForm.gradingPreference,
+      focusTopics: teacherEditForm.focusTopics,
+      avoidTopics: teacherEditForm.avoidTopics,
+      sourceSummary: teacherEditForm.sourceSummary,
+      analysisStatus: 'MANUAL_REVIEWED'
+    })
+    replaceItem(teacherProfiles.value, profile)
+    selectedTeacherProfile.value = profile
+    teacherProfileEditing.value = false
+    ElMessage.success('教师画像已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileSaving.value = false
   }
 }
 
@@ -4967,6 +5081,87 @@ button {
   letter-spacing: -0.06em;
 }
 
+.teacher-profile-score {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.teacher-profile-score button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.teacher-edit-panel {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #0de0c0;
+  background: #101010;
+}
+
+.teacher-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.teacher-edit-grid label {
+  min-width: 0;
+}
+
+.teacher-edit-grid label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.teacher-edit-grid .el-input),
+:deep(.teacher-edit-grid .el-input-number) {
+  width: 100%;
+}
+
+:deep(.teacher-edit-grid .el-input__wrapper),
+:deep(.teacher-edit-grid .el-textarea__inner) {
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.teacher-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.teacher-edit-actions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.teacher-edit-actions button:last-child {
+  background: #0de0c0;
+  color: #111;
+}
+
+.teacher-edit-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .teacher-profile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6111,6 +6306,7 @@ button {
   .gap-summary,
   .gap-item-grid,
   .teacher-layout,
+  .teacher-edit-grid,
   .teacher-profile-grid,
   .export-form-grid,
   .export-record-grid {
@@ -6133,6 +6329,7 @@ button {
 
   .export-options,
   .knowledge-mastery-actions,
+  .teacher-edit-actions,
   .export-record-heading,
   .export-record-card {
     display: grid;
