@@ -178,6 +178,74 @@
           </section>
 
           <section
+            id="relations"
+            class="relation-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'relations' }"
+          >
+            <div class="relation-heading">
+              <div>
+                <p class="eyebrow">课程关系</p>
+                <h2>把前置课、关联课和后续课串起来<span>.</span></h2>
+              </div>
+              <p>课程关系会用于后续关联导出、知识缺口检测和跨课程复习规划。</p>
+            </div>
+
+            <div class="relation-panel">
+              <div class="relation-form">
+                <label>
+                  <span>关联课程</span>
+                  <el-select v-model="relationForm.relatedCourseId" filterable placeholder="选择一门课程">
+                    <el-option
+                      v-for="course in relationCandidateCourses"
+                      :key="course.id"
+                      :label="`${course.courseName} / ${course.courseCode || '未设置编号'}`"
+                      :value="course.id"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>关系类型</span>
+                  <el-select v-model="relationForm.relationType">
+                    <el-option
+                      v-for="option in relationTypeOptions"
+                      :key="option.type"
+                      :label="option.label"
+                      :value="option.type"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>关系说明</span>
+                  <el-input v-model="relationForm.reason" maxlength="255" placeholder="例如：学习本课前建议先掌握基础语法" />
+                </label>
+                <button type="button" :disabled="relationSaving" @click="saveRelation">
+                  {{ relationSaving ? '保存中…' : '添加关系' }}
+                </button>
+              </div>
+
+              <div v-loading="relationLoading" class="relation-groups">
+                <section v-for="group in relationGroups" :key="group.type" class="relation-group">
+                  <div class="relation-group-heading">
+                    <strong>{{ group.label }}</strong>
+                    <span>{{ group.items.length }} 门</span>
+                  </div>
+                  <article v-for="relation in group.items" :key="relation.id" class="relation-card">
+                    <div>
+                      <strong>{{ relation.relatedCourseName }}</strong>
+                      <p>{{ relation.relatedCourseCode || '未设置编号' }} / {{ relation.relatedSemester || '未设置学期' }}</p>
+                      <small>{{ relation.reason || '暂无关系说明' }}</small>
+                    </div>
+                    <button type="button" @click="removeRelation(relation)">删除</button>
+                  </article>
+                  <div v-if="group.items.length === 0" class="relation-empty">
+                    暂无{{ group.label }}。
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="chapters"
             class="chapter-section scroll-panel"
             :class="{ 'section-active': activeSection === 'chapters' }"
@@ -980,10 +1048,13 @@ import { login, register } from '../../api/auth'
 import {
   createChapter,
   createCourse,
+  createCourseRelation,
   deleteChapter,
   deleteCourse,
+  deleteCourseRelation,
   listChapters,
   listCourses,
+  listCourseRelations,
   updateChapter,
   updateCourse
 } from '../../api/course'
@@ -1019,6 +1090,8 @@ const chapterLoading = ref(false)
 const materialLoading = ref(false)
 const searchLoading = ref(false)
 const searchHasRun = ref(false)
+const relationLoading = ref(false)
+const relationSaving = ref(false)
 const knowledgeLoading = ref(false)
 const knowledgeGenerating = ref(false)
 const tagSaving = ref(false)
@@ -1042,6 +1115,7 @@ const editingMaterialId = ref(null)
 const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
+const courseRelations = ref([])
 const searchResults = ref([])
 const knowledgeItems = ref([])
 const courseTags = ref([])
@@ -1059,6 +1133,7 @@ const examPreferredMaterialId = ref(null)
 
 const pageSections = [
   { id: 'overview', label: 'overview.', title: '课程概览' },
+  { id: 'relations', label: 'relations.', title: '课程关系' },
   { id: 'chapters', label: 'chapters.', title: '章节路径' },
   { id: 'materials', label: 'materials.', title: '课程资料' },
   { id: 'search', label: 'search.', title: '课程检索' },
@@ -1093,6 +1168,26 @@ const knowledgeTypeOptions = [
   { type: 'EXAMPLE', label: '例子' },
   { type: 'WARNING', label: '易错点' }
 ]
+
+const relationTypeOptions = [
+  { type: 'PREREQUISITE', label: '前置课程' },
+  { type: 'RELATED', label: '关联课程' },
+  { type: 'FOLLOW_UP', label: '后续课程' }
+]
+
+const relationCandidateCourses = computed(() => {
+  const relatedIds = new Set(courseRelations.value.map(item => item.relatedCourseId))
+  return courses.value.filter(course => (
+    selectedCourse.value
+    && course.id !== selectedCourse.value.id
+    && !relatedIds.has(course.id)
+  ))
+})
+
+const relationGroups = computed(() => relationTypeOptions.map(option => ({
+  ...option,
+  items: courseRelations.value.filter(item => item.relationType === option.type)
+})))
 
 const deleteDialogTitle = computed(() => {
   if (deleteTarget.value?.type === 'course') return '删除这门课程'
@@ -1147,6 +1242,12 @@ const searchForm = reactive({
   chapterId: null,
   materialType: null,
   isKey: false
+})
+
+const relationForm = reactive({
+  relatedCourseId: null,
+  relationType: 'PREREQUISITE',
+  reason: ''
 })
 
 const knowledgeForm = reactive({
@@ -1213,6 +1314,7 @@ async function loadCourses() {
       selectedCourse.value = null
       chapters.value = []
       materials.value = []
+      courseRelations.value = []
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1225,6 +1327,7 @@ async function selectCourse(course) {
   selectedCourse.value = course
   activeSection.value = 'overview'
   examPreferredMaterialId.value = null
+  resetRelationForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1232,12 +1335,14 @@ async function selectCourse(course) {
   chapterLoading.value = true
   materialLoading.value = true
   try {
-    const [chapterData, materialData] = await Promise.all([
+    const [chapterData, materialData, relationData] = await Promise.all([
       listChapters(course.id, currentUser.value.id),
-      listMaterials(course.id, currentUser.value.id)
+      listMaterials(course.id, currentUser.value.id),
+      listCourseRelations(course.id, currentUser.value.id)
     ])
     chapters.value = chapterData
     materials.value = materialData
+    courseRelations.value = relationData
     resetExportForm()
     await Promise.all([loadKnowledgeItems(), loadCourseTags(), loadExportData()])
   } catch (error) {
@@ -1245,6 +1350,55 @@ async function selectCourse(course) {
   } finally {
     chapterLoading.value = false
     materialLoading.value = false
+  }
+}
+
+async function loadCourseRelations() {
+  if (!selectedCourse.value) return
+  relationLoading.value = true
+  try {
+    courseRelations.value = await listCourseRelations(selectedCourse.value.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    relationLoading.value = false
+  }
+}
+
+async function saveRelation() {
+  if (!relationForm.relatedCourseId) {
+    ElMessage.warning('请选择关联课程')
+    return
+  }
+  relationSaving.value = true
+  try {
+    const relation = await createCourseRelation(
+      selectedCourse.value.id,
+      currentUser.value.id,
+      {
+        relatedCourseId: relationForm.relatedCourseId,
+        relationType: relationForm.relationType,
+        reason: relationForm.reason.trim() || null,
+        sortOrder: courseRelations.value.length
+      }
+    )
+    courseRelations.value.push(relation)
+    resetRelationForm()
+    ElMessage.success('课程关系已添加')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    relationSaving.value = false
+  }
+}
+
+async function removeRelation(relation) {
+  try {
+    await deleteCourseRelation(relation.id, currentUser.value.id)
+    courseRelations.value = courseRelations.value.filter(item => item.id !== relation.id)
+    ElMessage.success('课程关系已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
   }
 }
 
@@ -1426,6 +1580,12 @@ function resetSearch() {
   searchForm.isKey = false
   searchResults.value = []
   searchHasRun.value = false
+}
+
+function resetRelationForm() {
+  relationForm.relatedCourseId = null
+  relationForm.relationType = 'PREREQUISITE'
+  relationForm.reason = ''
 }
 
 function resetExportForm() {
@@ -1749,6 +1909,7 @@ async function removeCourse(courseId) {
       selectedCourse.value = null
       chapters.value = []
       materials.value = []
+      courseRelations.value = []
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -1795,6 +1956,7 @@ function logout() {
   courses.value = []
   chapters.value = []
   materials.value = []
+  courseRelations.value = []
   selectedCourse.value = null
 }
 
@@ -2522,6 +2684,171 @@ button {
 .course-hero.section-active .hero-orbit-two {
   opacity: 1;
   transform: translate(0) rotate(0) scale(1);
+}
+
+.relation-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 96px;
+  background: #f5f3ef;
+}
+
+.relation-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.relation-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.relation-heading h2 span {
+  color: #ff3151;
+}
+
+.relation-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.relation-panel {
+  margin-top: 48px;
+  display: grid;
+  gap: 26px;
+}
+
+.relation-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px minmax(260px, 1.2fr) 140px;
+  gap: 12px;
+  align-items: end;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ff3151;
+}
+
+.relation-form label {
+  min-width: 0;
+}
+
+.relation-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+:deep(.relation-form .el-select),
+:deep(.relation-form .el-input) {
+  width: 100%;
+}
+
+:deep(.relation-form .el-select__wrapper),
+:deep(.relation-form .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.relation-form button {
+  min-height: 50px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.relation-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.relation-groups {
+  min-height: 260px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.relation-group {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.relation-group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.relation-group-heading strong {
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.relation-group-heading span {
+  color: #666;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.relation-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #111;
+  box-shadow: 6px 6px 0 #14cbea;
+}
+
+.relation-card strong {
+  display: block;
+  overflow: hidden;
+  font-size: 20px;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relation-card p,
+.relation-card small {
+  display: block;
+  margin: 8px 0 0;
+  color: #666;
+  line-height: 1.55;
+}
+
+.relation-card button {
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ff3151;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.relation-empty {
+  min-height: 110px;
+  display: grid;
+  place-content: center;
+  color: #777;
+  font-size: 13px;
 }
 
 .chapter-section {
@@ -4430,6 +4757,7 @@ button {
   }
 
   .course-hero,
+  .relation-section,
   .chapter-section,
   .material-section,
   .export-section {
@@ -4471,6 +4799,7 @@ button {
   }
 
   .section-intro,
+  .relation-heading,
   .material-title-row,
   .search-heading,
   .knowledge-heading,
@@ -4504,10 +4833,16 @@ button {
     margin-top: 24px;
   }
 
+  .relation-heading > p {
+    margin-top: 24px;
+  }
+
   .export-heading > p {
     margin-top: 24px;
   }
 
+  .relation-form,
+  .relation-groups,
   .search-input-row,
   .search-filters,
   .knowledge-generator-main,
