@@ -1,6 +1,7 @@
 package com.example.coursekb.service;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
+import com.example.coursekb.dto.TeacherProfileUpdateRequest;
 import com.example.coursekb.entity.Course;
 import com.example.coursekb.entity.ExamQuestion;
 import com.example.coursekb.entity.Material;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Map;
@@ -32,6 +34,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TeacherProfileService {
     private static final int MAX_SOURCE_LENGTH = 52000;
+    private static final Set<String> MANUAL_STATUSES = new HashSet<>(Arrays.asList(
+            "SUCCESS", "FAILED", "MANUAL_REVIEWED"));
 
     private final CourseService courseService;
     private final DeepSeekService deepSeekService;
@@ -130,6 +134,24 @@ public class TeacherProfileService {
                             material == null ? null : material.getMaterialType());
                 })
                 .collect(Collectors.toList());
+    }
+
+    public TeacherProfileVO update(Long profileId, TeacherProfileUpdateRequest request) {
+        TeacherProfile profile = getOwnedProfile(profileId, request.getUserId());
+        courseService.getOwnedCourse(profile.getCourseId(), request.getUserId());
+        if (request.getTeacherName() != null && !request.getTeacherName().trim().isEmpty()) {
+            profile.setTeacherName(request.getTeacherName().trim());
+        }
+        profile.setConfidenceScore(normalizeConfidence(request.getConfidenceScore()));
+        profile.setExamStyle(normalizeText(request.getExamStyle()));
+        profile.setQuestionPreference(normalizeText(request.getQuestionPreference()));
+        profile.setGradingPreference(normalizeText(request.getGradingPreference()));
+        profile.setFocusTopics(normalizeText(request.getFocusTopics()));
+        profile.setAvoidTopics(normalizeText(request.getAvoidTopics()));
+        profile.setSourceSummary(normalizeText(request.getSourceSummary()));
+        profile.setAnalysisStatus(normalizeManualStatus(request.getAnalysisStatus()));
+        profile.setGeneratedByAi(false);
+        return TeacherProfileVO.from(teacherProfileRepository.save(profile));
     }
 
     private List<Material> resolveMaterials(Long courseId, List<Long> materialIds) {
@@ -280,11 +302,32 @@ public class TeacherProfileService {
         BigDecimal value = node == null || !node.isNumber()
                 ? new BigDecimal("50")
                 : node.decimalValue();
+        return normalizeConfidence(value);
+    }
+
+    private BigDecimal normalizeConfidence(BigDecimal value) {
+        if (value == null) {
+            return new BigDecimal("50");
+        }
         if (value.compareTo(BigDecimal.ZERO) < 0) {
             return BigDecimal.ZERO;
         }
         BigDecimal max = new BigDecimal("100");
         return value.compareTo(max) > 0 ? max : value;
+    }
+
+    private String normalizeManualStatus(String value) {
+        String status = value == null || value.trim().isEmpty()
+                ? "MANUAL_REVIEWED"
+                : value.trim().toUpperCase();
+        if (!MANUAL_STATUSES.contains(status)) {
+            throw new BusinessException("不支持的教师画像状态：" + status);
+        }
+        return status;
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private String normalizeEvidenceType(String value) {
