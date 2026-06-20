@@ -29,3 +29,16 @@ export function deleteAiProvider(configId, userId) {
     params: { userId }
   })
 }
+
+export function listAiGenerationTasks(userId, courseId) {
+  return request.get('/ai-generation-tasks', {
+    params: {
+      userId,
+      courseId
+    }
+  })
+}
+
+export function updateAiGenerationTaskStatus(taskId, data) {
+  return request.put(`/ai-generation-tasks/${taskId}/status`, data)
+}

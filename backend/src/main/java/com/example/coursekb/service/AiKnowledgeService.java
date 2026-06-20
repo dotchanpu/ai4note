@@ -1,6 +1,7 @@
 package com.example.coursekb.service;
 
 import com.example.coursekb.dto.AiKnowledgeGenerateRequest;
+import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.KnowledgeItem;
 import com.example.coursekb.entity.Material;
 import com.example.coursekb.entity.TextChunk;
@@ -25,6 +26,7 @@ public class AiKnowledgeService {
     private final MaterialService materialService;
     private final TextChunkRepository textChunkRepository;
     private final DeepSeekService deepSeekService;
+    private final AiGenerationTaskService aiGenerationTaskService;
     private final TagService tagService;
     private final KnowledgeItemService knowledgeItemService;
     private final ObjectMapper objectMapper;
@@ -33,12 +35,14 @@ public class AiKnowledgeService {
             MaterialService materialService,
             TextChunkRepository textChunkRepository,
             DeepSeekService deepSeekService,
+            AiGenerationTaskService aiGenerationTaskService,
             TagService tagService,
             KnowledgeItemService knowledgeItemService,
             ObjectMapper objectMapper) {
         this.materialService = materialService;
         this.textChunkRepository = textChunkRepository;
         this.deepSeekService = deepSeekService;
+        this.aiGenerationTaskService = aiGenerationTaskService;
         this.tagService = tagService;
         this.knowledgeItemService = knowledgeItemService;
         this.objectMapper = objectMapper;
@@ -56,27 +60,45 @@ public class AiKnowledgeService {
         }
         int maxItems = request.getMaxItems() == null ? 12 : request.getMaxItems();
         String source = buildSource(chunks);
-        String json = deepSeekService.generateJson(
+        String systemPrompt = buildSystemPrompt(maxItems);
+        String userPrompt = "资料标题：" + material.getTitle() + "\n\n资料正文：\n" + source;
+        String prompt = systemPrompt + "\n\n" + userPrompt;
+        AiGenerationTask task = aiGenerationTaskService.createTask(
                 userId,
                 material.getCourseId(),
-                buildSystemPrompt(maxItems),
-                "资料标题：" + material.getTitle() + "\n\n资料正文：\n" + source,
-                request.getModel(),
-                8192);
+                "KNOWLEDGE_EXTRACTION",
+                prompt,
+                null,
+                null,
+                null);
+        aiGenerationTaskService.markRunning(task.getId());
+        try {
+            String json = deepSeekService.generateJson(
+                    userId,
+                    material.getCourseId(),
+                    systemPrompt,
+                    userPrompt,
+                    request.getModel(),
+                    8192);
 
-        JsonNode root = parseJson(json);
-        List<String> tags = parseTags(root.path("tags"));
-        List<KnowledgeItem> items = parseItems(root.path("items"), material, maxItems);
-        if (items.isEmpty()) {
-            throw new BusinessException("AI 未整理出有效知识条目，请调整资料后重试");
+            JsonNode root = parseJson(json);
+            List<String> tags = parseTags(root.path("tags"));
+            List<KnowledgeItem> items = parseItems(root.path("items"), material, maxItems);
+            if (items.isEmpty()) {
+                throw new BusinessException("AI 未整理出有效知识条目，请调整资料后重试");
+            }
+
+            List<String> savedTags = tagService.replaceMaterialTagsInternal(material, tags);
+            List<KnowledgeItemVO> savedItems = knowledgeItemService.replaceMaterialItems(
+                    material,
+                    items,
+                    Boolean.TRUE.equals(request.getReplaceExisting()));
+            aiGenerationTaskService.markSuccess(task.getId(), "knowledge-items:" + savedItems.size());
+            return new AiKnowledgeGenerateResultVO(savedTags, savedItems);
+        } catch (RuntimeException exception) {
+            aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
+            throw exception;
         }
-
-        List<String> savedTags = tagService.replaceMaterialTagsInternal(material, tags);
-        List<KnowledgeItemVO> savedItems = knowledgeItemService.replaceMaterialItems(
-                material,
-                items,
-                Boolean.TRUE.equals(request.getReplaceExisting()));
-        return new AiKnowledgeGenerateResultVO(savedTags, savedItems);
     }
 
     private String buildSystemPrompt(int maxItems) {

@@ -1108,28 +1108,32 @@ MANUAL_REVIEWED
 
 查询参数：`userId`。
 
-### 14.5 创建 AI 生成任务
+### 14.11 查询 AI 生成任务记录
 
-- 状态：规划中
-- 方法：`POST`
+- 状态：已实现
+- 方法：`GET`
 - 路径：`/api/ai-generation-tasks`
 
-任务类型建议值：
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只返回该课程任务，并校验课程归属 |
+
+当前教师画像分析和资料知识整理流程会自动写入任务记录。后续复习资料生成、模拟题生成等流程可复用同一张任务表。
+
+任务类型：
 
 ```text
-TEACHER_PROFILE_ANALYSIS
-EXAM_KNOWLEDGE_MAPPING
-KNOWLEDGE_GAP_ANALYSIS
-REVIEW_NOTE_GENERATION
-MOCK_EXAM_GENERATION
-KNOWLEDGE_PACKAGE_SUMMARY
+TEACHER_PROFILE
+EXAM_MAPPING
+KNOWLEDGE_GAP
+REVIEW_GENERATION
+MOCK_EXAM
+PACKAGE_SUMMARY
+KNOWLEDGE_EXTRACTION
 ```
-
-### 14.6 查询 AI 生成任务
-
-- 状态：规划中
-- 方法：`GET`
-- 路径：`/api/ai-generation-tasks/{taskId}`
 
 任务状态：
 
@@ -1144,16 +1148,43 @@ CANCELED
 响应示例：
 
 ```json
+[
+  {
+    "id": 100,
+    "userId": 1,
+    "courseId": 1,
+    "reviewProfileId": null,
+    "teacherProfileId": 8,
+    "providerConfigId": 1,
+    "taskType": "TEACHER_PROFILE",
+    "prompt": "你是课程考试分析助手...",
+    "status": "SUCCESS",
+    "resultPath": "teacher-profile:8",
+    "errorMessage": null,
+    "createTime": "2026-06-18T15:00:00",
+    "finishTime": "2026-06-18T15:01:20"
+  }
+]
+```
+
+### 14.12 更新 AI 生成任务状态
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/ai-generation-tasks/{taskId}/status`
+
+请求体示例：
+
+```json
 {
-  "id": 100,
-  "taskType": "REVIEW_NOTE_GENERATION",
-  "status": "SUCCESS",
-  "resultPath": "storage/ai-results/review/100.md",
-  "errorMessage": null,
-  "createTime": "2026-06-18T15:00:00",
-  "finishTime": "2026-06-18T15:01:20"
+  "userId": 1,
+  "status": "FAILED",
+  "resultPath": null,
+  "errorMessage": "模型返回为空"
 }
 ```
+
+该接口用于后续异步生成流程回写状态。当前同步 AI 流程会由后端服务内部自动标记 `RUNNING`、`SUCCESS` 或 `FAILED`。
 
 ## 15. Agent 知识包导出
 

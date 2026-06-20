@@ -2,6 +2,7 @@ package com.example.coursekb.service;
 
 import com.example.coursekb.dto.TeacherProfileAnalyzeRequest;
 import com.example.coursekb.dto.TeacherProfileUpdateRequest;
+import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.Course;
 import com.example.coursekb.entity.ExamQuestion;
 import com.example.coursekb.entity.Material;
@@ -39,6 +40,7 @@ public class TeacherProfileService {
 
     private final CourseService courseService;
     private final DeepSeekService deepSeekService;
+    private final AiGenerationTaskService aiGenerationTaskService;
     private final MaterialRepository materialRepository;
     private final TextChunkRepository textChunkRepository;
     private final ExamQuestionRepository examQuestionRepository;
@@ -49,6 +51,7 @@ public class TeacherProfileService {
     public TeacherProfileService(
             CourseService courseService,
             DeepSeekService deepSeekService,
+            AiGenerationTaskService aiGenerationTaskService,
             MaterialRepository materialRepository,
             TextChunkRepository textChunkRepository,
             ExamQuestionRepository examQuestionRepository,
@@ -57,6 +60,7 @@ public class TeacherProfileService {
             ObjectMapper objectMapper) {
         this.courseService = courseService;
         this.deepSeekService = deepSeekService;
+        this.aiGenerationTaskService = aiGenerationTaskService;
         this.materialRepository = materialRepository;
         this.textChunkRepository = textChunkRepository;
         this.examQuestionRepository = examQuestionRepository;
@@ -82,18 +86,29 @@ public class TeacherProfileService {
         }
 
         TeacherProfile profile = new TeacherProfile();
+        String systemPrompt = buildSystemPrompt();
+        String prompt = systemPrompt + "\n\n教师：" + request.getTeacherName().trim() + "\n\n" + source;
         profile.setUserId(request.getUserId());
         profile.setCourseId(courseId);
         profile.setTeacherName(request.getTeacherName().trim());
         profile.setGeneratedByAi(true);
         profile.setAnalysisStatus("RUNNING");
         profile = teacherProfileRepository.save(profile);
+        AiGenerationTask task = aiGenerationTaskService.createTask(
+                request.getUserId(),
+                courseId,
+                "TEACHER_PROFILE",
+                prompt,
+                null,
+                profile.getId(),
+                request.getProviderConfigId());
+        aiGenerationTaskService.markRunning(task.getId());
 
         try {
             String json = deepSeekService.generateJson(
                     request.getUserId(),
                     courseId,
-                    buildSystemPrompt(),
+                    systemPrompt,
                     source,
                     request.getModel(),
                     8192);
@@ -103,12 +118,14 @@ public class TeacherProfileService {
             profile.setLastAnalyzedTime(LocalDateTime.now());
             TeacherProfile saved = teacherProfileRepository.save(profile);
             saveEvidence(saved, root.path("evidence"), materials);
+            aiGenerationTaskService.markSuccess(task.getId(), "teacher-profile:" + saved.getId());
             return TeacherProfileVO.from(saved);
         } catch (RuntimeException exception) {
             profile.setAnalysisStatus("FAILED");
             profile.setSourceSummary("分析失败：" + exception.getMessage());
             profile.setLastAnalyzedTime(LocalDateTime.now());
             teacherProfileRepository.save(profile);
+            aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
             throw exception;
         }
     }
