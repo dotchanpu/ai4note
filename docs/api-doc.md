@@ -731,6 +731,38 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 | `KNOWLEDGE_TITLE` | 知识条目标题命中 |
 | `KNOWLEDGE_CONTENT` | 知识条目内容命中 |
 
+### 10.2 查询搜索记录
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/search/records`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只返回该课程搜索记录，并校验课程归属 |
+
+按搜索时间倒序返回最近 100 条记录。前端课程搜索页会按当前课程展示历史关键词，点击历史记录可复用关键词重新搜索。
+
+响应示例：
+
+```json
+[
+  {
+    "id": 12,
+    "userId": 1,
+    "courseId": 4,
+    "courseName": "编译原理",
+    "keyword": "语义分析",
+    "searchType": "UNIFIED_KNOWLEDGE",
+    "resultCount": 8,
+    "searchTime": "2026-06-21T01:30:00"
+  }
+]
+```
+
 ## 11. 真题知识点映射
 
 ### 11.1 从真题资料中抽取题目

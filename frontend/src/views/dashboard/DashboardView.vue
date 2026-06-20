@@ -468,6 +468,35 @@
               </div>
             </div>
 
+            <div class="search-history" v-loading="searchRecordLoading">
+              <div class="search-history-heading">
+                <div>
+                  <strong>{{ searchRecords.length }}</strong>
+                  <span>历史搜索</span>
+                </div>
+                <button type="button" :disabled="searchRecordLoading" @click="loadSearchRecords">
+                  刷新历史
+                </button>
+              </div>
+              <div v-if="searchRecords.length > 0" class="search-history-list">
+                <button
+                  v-for="record in searchRecords"
+                  :key="record.id"
+                  type="button"
+                  @click="rerunSearchRecord(record)"
+                >
+                  <strong>{{ record.keyword }}</strong>
+                  <span>{{ searchTypeLabel(record.searchType) }}</span>
+                  <span>{{ record.resultCount }} 条结果</span>
+                  <small>{{ formatSearchTime(record.searchTime) }}</small>
+                </button>
+              </div>
+              <div v-else class="search-history-empty">
+                <strong>还没有搜索记录。</strong>
+                <p>完成一次课程检索后，关键词和结果数量会出现在这里。</p>
+              </div>
+            </div>
+
             <div class="search-result-heading">
               <strong>{{ searchHasRun ? `${searchResults.length} 条结果` : '等待检索' }}</strong>
               <span v-if="searchHasRun && searchForm.keyword">“{{ searchForm.keyword }}”</span>
@@ -1805,7 +1834,7 @@ import {
   updateMaterial,
   uploadMaterial
 } from '../../api/material'
-import { searchMaterials } from '../../api/search'
+import { listSearchRecords, searchMaterials } from '../../api/search'
 import {
   deleteKnowledgeItem,
   generateKnowledgeItems,
@@ -1856,6 +1885,7 @@ const courseStatsLoading = ref(false)
 const chapterLoading = ref(false)
 const materialLoading = ref(false)
 const searchLoading = ref(false)
+const searchRecordLoading = ref(false)
 const searchHasRun = ref(false)
 const relationLoading = ref(false)
 const relationSaving = ref(false)
@@ -1899,6 +1929,7 @@ const materials = ref([])
 const courseRelations = ref([])
 const courseStats = ref(null)
 const searchResults = ref([])
+const searchRecords = ref([])
 const knowledgeItems = ref([])
 const gapReports = ref([])
 const gapItems = ref([])
@@ -2227,6 +2258,7 @@ async function loadCourses() {
       materials.value = []
       courseRelations.value = []
       courseStats.value = null
+      searchRecords.value = []
       clearGapState()
       clearTeacherProfileState()
       clearReviewProfileState()
@@ -2268,6 +2300,7 @@ async function selectCourse(course) {
       loadKnowledgeItems(),
       loadCourseStats(),
       loadCourseTags(),
+      loadSearchRecords(),
       loadExportData(),
       loadGapReports(),
       loadTeacherProfiles(),
@@ -2304,6 +2337,18 @@ async function loadCourseStats() {
     ElMessage.error(error.message)
   } finally {
     courseStatsLoading.value = false
+  }
+}
+
+async function loadSearchRecords() {
+  if (!selectedCourse.value || !currentUser.value) return
+  searchRecordLoading.value = true
+  try {
+    searchRecords.value = await listSearchRecords(currentUser.value.id, selectedCourse.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    searchRecordLoading.value = false
   }
 }
 
@@ -2870,6 +2915,15 @@ function formatReviewTime(value) {
   return value ? new Date(value).toLocaleString() : '尚未复习'
 }
 
+function formatSearchTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
+}
+
+function searchTypeLabel(type) {
+  if (type === 'UNIFIED_KNOWLEDGE') return '统一检索'
+  return type || '检索'
+}
+
 function knowledgeTypeLabel(type) {
   return knowledgeTypeOptions.find(option => option.type === type)?.label || type
 }
@@ -2890,6 +2944,7 @@ async function runSearch() {
       isKey: searchForm.isKey
     })
     searchHasRun.value = true
+    await loadSearchRecords()
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -2904,6 +2959,12 @@ function resetSearch() {
   searchForm.isKey = false
   searchResults.value = []
   searchHasRun.value = false
+}
+
+async function rerunSearchRecord(record) {
+  if (!record?.keyword) return
+  searchForm.keyword = record.keyword
+  await runSearch()
 }
 
 function resetRelationForm() {
@@ -3427,6 +3488,7 @@ function logout() {
   materials.value = []
   courseRelations.value = []
   courseStats.value = null
+  searchRecords.value = []
   selectedCourse.value = null
   clearGapState()
   clearTeacherProfileState()
@@ -5001,6 +5063,116 @@ button {
 
 .search-reset:hover {
   color: #ff3151;
+}
+
+.search-history {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #111;
+}
+
+.search-history-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.search-history-heading strong,
+.search-history-heading span {
+  display: block;
+}
+
+.search-history-heading strong {
+  font-size: 34px;
+  letter-spacing: -0.05em;
+}
+
+.search-history-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.search-history-heading button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  background: #14cbea;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.search-history-list {
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.search-history-list button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 10px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #111;
+  background: #f9faf6;
+  color: #111;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-history-list button:hover {
+  background: #ffef5a;
+}
+
+.search-history-list strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-history-list span,
+.search-history-list small {
+  color: #666;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.search-history-list small {
+  grid-column: 1 / -1;
+}
+
+.search-history-empty {
+  min-height: 130px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.search-history-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.search-history-empty p {
+  margin: 8px 0 0;
+  font-size: 12px;
 }
 
 .search-result-heading {
@@ -8015,6 +8187,7 @@ button {
   .relation-groups,
   .search-input-row,
   .search-filters,
+  .search-history-list,
   .knowledge-generator-main,
   .knowledge-tags-panel,
   .knowledge-mastery-row,

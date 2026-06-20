@@ -13,7 +13,7 @@
 - 课程资料上传、连续上传、文件落盘、分类展示、详情修改与文件清理删除
 - 课程维度资料统计，展示资料数量、类型分布、已解析数量、知识条目、真题、映射和导出次数
 - PDF 按页提取、无意义换行清理、段落/句子感知分块、覆盖解析与清晰文本预览
-- 统一检索资料标题、摘要、标签、PDF 正文和知识条目，支持章节、资料类型和重点标记筛选
+- 统一检索资料标题、摘要、标签、PDF 正文和知识条目，支持章节、资料类型、重点标记筛选和历史搜索记录
 - DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
 - AI 基于资料完整语义整理标签与知识条目，保留类型、页码和重要程度
 - 知识条目掌握状态、掌握分数、复习备注和最近复习时间维护
@@ -190,6 +190,7 @@ DELETE /api/materials/{materialId}?userId={userId}
 POST /api/materials/{materialId}/parse?userId={userId}
 GET  /api/materials/{materialId}/text-chunks?userId={userId}
 GET  /api/search?userId={userId}&courseId={courseId}&keyword={keyword}
+GET  /api/search/records?userId={userId}&courseId={courseId}
 GET  /api/ai/status
 POST /api/ai/chat
 GET  /api/ai-generation-tasks?userId={userId}&courseId={courseId}
