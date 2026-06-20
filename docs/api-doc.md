@@ -955,6 +955,14 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 
 该接口会基于当前真题映射结果做实时聚合统计，可按年份、章节和题型筛选知识点命中次数、累计分值和最近出现年份。
 
+### 11.5 查询高频考点趋势
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/exam-knowledge-trends`
+
+查询参数：`userId`，可选 `chapterId`、`questionType`。该接口基于带年份的真题和知识点映射，按知识点聚合历年命中次数与分值，返回每个高频考点的总命中次数、总分和年度趋势明细，用于观察考点热度变化。
+
 ## 12. 用户掌握状态与知识缺口
 
 ### 12.1 查询知识点掌握状态

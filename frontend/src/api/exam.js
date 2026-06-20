@@ -24,3 +24,9 @@ export function listExamKnowledgeStats(courseId, userId, filters = {}) {
     params: { userId, ...filters }
   })
 }
+
+export function listExamKnowledgeTrends(courseId, userId, filters = {}) {
+  return request.get(`/courses/${courseId}/exam-knowledge-trends`, {
+    params: { userId, ...filters }
+  })
+}
