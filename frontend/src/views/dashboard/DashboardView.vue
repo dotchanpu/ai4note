@@ -1082,6 +1082,47 @@
                       <pre>{{ mockExamResult.content }}</pre>
                     </div>
                   </form>
+                  <form class="mock-exam-panel sprint-outline-panel" @submit.prevent="generateSprintOutlineFromProfile">
+                    <div class="mock-exam-heading">
+                      <div>
+                        <span>冲刺提纲</span>
+                        <strong>按出题风格规划</strong>
+                      </div>
+                      <button type="submit" :disabled="sprintOutlineGenerating">
+                        {{ sprintOutlineGenerating ? '生成中…' : '生成冲刺提纲' }}
+                      </button>
+                    </div>
+                    <div class="mock-exam-controls">
+                      <label>
+                        <span>天数</span>
+                        <el-input-number
+                          v-model="sprintOutlineForm.days"
+                          :min="1"
+                          :max="30"
+                          :step="1"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label class="sprint-outline-requirement">
+                        <span>补充要求</span>
+                        <el-input
+                          v-model="sprintOutlineForm.customRequirement"
+                          maxlength="1000"
+                          placeholder="例如：最后两天集中刷综合题"
+                        />
+                      </label>
+                    </div>
+                    <div v-if="sprintOutlineResult" class="mock-exam-result">
+                      <div>
+                        <strong>{{ sprintOutlineResult.title }}</strong>
+                        <span>{{ sprintOutlineResult.dayCount }} 天 · {{ sprintOutlineResult.resultPath }}</span>
+                      </div>
+                      <button type="button" @click="downloadSprintOutline(sprintOutlineResult.task)">
+                        下载 Markdown
+                      </button>
+                      <pre>{{ sprintOutlineResult.content }}</pre>
+                    </div>
+                  </form>
                   <div v-loading="teacherEvidenceLoading" class="teacher-evidence-panel">
                     <div class="teacher-evidence-heading">
                       <strong>{{ teacherProfileEvidence.length }}</strong>
@@ -1359,6 +1400,12 @@
                   class="ai-task-actions"
                 >
                   <button type="button" @click="downloadMockExam(task)">下载模拟题</button>
+                </div>
+                <div
+                  v-if="task.taskType === 'REVIEW_GENERATION' && task.status === 'SUCCESS' && task.resultPath?.startsWith('sprint-outlines/')"
+                  class="ai-task-actions"
+                >
+                  <button type="button" @click="downloadSprintOutline(task)">下载冲刺提纲</button>
                 </div>
               </article>
 
@@ -2104,6 +2151,10 @@ import {
   mockExamDownloadUrl
 } from '../../api/mockExam'
 import {
+  generateSprintOutline,
+  sprintOutlineDownloadUrl
+} from '../../api/sprintOutline'
+import {
   createReviewProfile,
   deleteReviewProfile,
   listReviewProfiles,
@@ -2142,6 +2193,7 @@ const teacherEvidenceLoading = ref(false)
 const teacherProfileEditing = ref(false)
 const teacherProfileSaving = ref(false)
 const mockExamGenerating = ref(false)
+const sprintOutlineGenerating = ref(false)
 const reviewProfileLoading = ref(false)
 const reviewProfileSaving = ref(false)
 const aiProviderLoading = ref(false)
@@ -2183,6 +2235,7 @@ const prerequisiteGapHints = ref([])
 const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const mockExamResult = ref(null)
+const sprintOutlineResult = ref(null)
 const reviewProfiles = ref([])
 const aiProviders = ref([])
 const aiGenerationTasks = ref([])
@@ -2425,6 +2478,11 @@ const teacherProfileForm = reactive({
 const mockExamForm = reactive({
   questionCount: 8,
   difficultyLevel: 'MEDIUM',
+  customRequirement: ''
+})
+
+const sprintOutlineForm = reactive({
+  days: 7,
   customRequirement: ''
 })
 
@@ -2788,6 +2846,7 @@ async function selectTeacherProfile(profile) {
   selectedTeacherProfile.value = profile
   teacherProfileEditing.value = false
   mockExamResult.value = null
+  sprintOutlineResult.value = null
   teacherEvidenceLoading.value = true
   try {
     teacherProfileEvidence.value = await listTeacherProfileEvidence(profile.id, currentUser.value.id)
@@ -2824,6 +2883,33 @@ async function generateMockExamFromProfile() {
 function downloadMockExam(task) {
   if (!task || !currentUser.value) return
   window.open(mockExamDownloadUrl(task.id, currentUser.value.id), '_blank')
+}
+
+async function generateSprintOutlineFromProfile() {
+  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  sprintOutlineGenerating.value = true
+  try {
+    const result = await generateSprintOutline(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherProfileId: selectedTeacherProfile.value.id,
+      days: sprintOutlineForm.days,
+      model: 'deepseek-v4-flash',
+      customRequirement: sprintOutlineForm.customRequirement.trim() || null
+    })
+    sprintOutlineResult.value = result
+    await loadAiGenerationTasks()
+    ElMessage.success(`已生成 ${result.dayCount} 天冲刺提纲`)
+  } catch (error) {
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    sprintOutlineGenerating.value = false
+  }
+}
+
+function downloadSprintOutline(task) {
+  if (!task || !currentUser.value) return
+  window.open(sprintOutlineDownloadUrl(task.id, currentUser.value.id), '_blank')
 }
 
 async function loadReviewProfiles() {
@@ -3364,12 +3450,19 @@ function resetMockExamForm() {
   mockExamResult.value = null
 }
 
+function resetSprintOutlineForm() {
+  sprintOutlineForm.days = 7
+  sprintOutlineForm.customRequirement = ''
+  sprintOutlineResult.value = null
+}
+
 function clearTeacherProfileState() {
   teacherProfiles.value = []
   teacherProfileEvidence.value = []
   selectedTeacherProfile.value = null
   resetTeacherProfileForm()
   resetMockExamForm()
+  resetSprintOutlineForm()
 }
 
 function resetReviewProfileForm() {
@@ -6919,6 +7012,14 @@ button {
   white-space: pre-wrap;
 }
 
+.sprint-outline-panel {
+  border-color: #ffb21c;
+}
+
+.sprint-outline-requirement {
+  grid-column: span 2;
+}
+
 .teacher-evidence-panel {
   margin-top: 22px;
   padding-top: 18px;
@@ -9013,6 +9114,10 @@ button {
   .chapter-track,
   .material-groups {
     grid-template-columns: 1fr;
+  }
+
+  .sprint-outline-requirement {
+    grid-column: auto;
   }
 
   .material-title-row > p {
