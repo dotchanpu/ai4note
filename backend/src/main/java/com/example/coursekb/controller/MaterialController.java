@@ -5,8 +5,10 @@ import com.example.coursekb.service.ContentDeletionService;
 import com.example.coursekb.service.MaterialService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
+import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.vo.MaterialVO;
 import com.example.coursekb.vo.PdfParseResultVO;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -72,6 +74,40 @@ public class MaterialController {
                 file);
     }
 
+    @PostMapping("/materials/batch")
+    public List<MaterialVO> uploadBatch(
+            @RequestParam Long userId,
+            @RequestParam Long courseId,
+            @RequestParam List<MultipartFile> files,
+            @RequestParam List<String> titles,
+            @RequestParam List<String> materialTypes,
+            @RequestParam(required = false) List<String> chapterIds,
+            @RequestParam(required = false) List<String> years,
+            @RequestParam(required = false) List<String> isKeys,
+            @RequestParam(required = false) List<String> summaries) {
+        int total = files == null ? 0 : files.size();
+        if (total == 0) {
+            throw new BusinessException("请选择需要上传的资料文件");
+        }
+        requireSize(titles, total, "资料标题数量与文件数量不一致");
+        requireSize(materialTypes, total, "资料类型数量与文件数量不一致");
+
+        List<MaterialVO> uploaded = new ArrayList<>();
+        for (int index = 0; index < total; index++) {
+            uploaded.add(materialService.upload(
+                    userId,
+                    courseId,
+                    parseLong(optionalValue(chapterIds, index), "章节参数不正确"),
+                    requiredValue(titles, index, "资料标题数量与文件数量不一致"),
+                    requiredValue(materialTypes, index, "资料类型数量与文件数量不一致"),
+                    parseInteger(optionalValue(years, index), "年份参数不正确"),
+                    parseBoolean(optionalValue(isKeys, index)),
+                    optionalValue(summaries, index),
+                    files.get(index)));
+        }
+        return uploaded;
+    }
+
     @PutMapping("/materials/{materialId}")
     public MaterialVO update(
             @PathVariable Long materialId,
@@ -99,5 +135,52 @@ public class MaterialController {
             @PathVariable Long materialId,
             @RequestParam Long userId) {
         return pdfParseService.listChunks(materialId, userId);
+    }
+
+    private void requireSize(List<?> values, int expected, String message) {
+        if (values == null || values.size() != expected) {
+            throw new BusinessException(message);
+        }
+    }
+
+    private String requiredValue(List<String> values, int index, String message) {
+        if (values == null || index >= values.size()) {
+            throw new BusinessException(message);
+        }
+        return values.get(index);
+    }
+
+    private String optionalValue(List<String> values, int index) {
+        if (values == null || index >= values.size()) {
+            return null;
+        }
+        String value = values.get(index);
+        return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
+
+    private Long parseLong(String value, String message) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (NumberFormatException exception) {
+            throw new BusinessException(message);
+        }
+    }
+
+    private Integer parseInteger(String value, String message) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(value);
+        } catch (NumberFormatException exception) {
+            throw new BusinessException(message);
+        }
+    }
+
+    private Boolean parseBoolean(String value) {
+        return value != null && Boolean.parseBoolean(value);
     }
 }
