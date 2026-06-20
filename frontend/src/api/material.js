@@ -11,6 +11,13 @@ export function uploadMaterial(data) {
   })
 }
 
+export function uploadMaterialsBatch(data) {
+  return request.post('/materials/batch', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 180000
+  })
+}
+
 export function updateMaterial(materialId, userId, data) {
   return request.put(`/materials/${materialId}`, data, {
     params: { userId }

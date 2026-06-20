@@ -1643,60 +1643,115 @@
           class="studio-upload"
           drag
           :auto-upload="false"
-          :limit="1"
+          multiple
+          :file-list="uploadFileList"
           accept=".pdf,.doc,.docx,.md,.txt"
           :on-change="handleFileChange"
           :on-remove="handleFileRemove"
         >
           <div class="upload-symbol">＋</div>
-          <strong>拖入文件，或点击选择</strong>
+          <strong>拖入一个或多个文件，或点击选择</strong>
           <p>PDF · Word · Markdown · TXT</p>
           <template #tip>
             <div class="upload-tip">支持 PDF、Word、Markdown、TXT，单个文件不超过 50MB。</div>
           </template>
         </el-upload>
       </el-form-item>
-      <el-form-item label="资料标题">
-        <el-input v-model="materialForm.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
-      </el-form-item>
-      <div class="form-grid">
-        <el-form-item label="资料类型">
-          <el-select v-model="materialForm.materialType" class="full-select">
-            <el-option label="课件" value="SLIDE" />
-            <el-option label="实验报告" value="LAB_REPORT" />
-            <el-option label="往年真题" value="EXAM" />
-            <el-option label="复习笔记" value="NOTE" />
-            <el-option label="代码样例" value="CODE" />
-            <el-option label="其他" value="OTHER" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="所属章节">
-          <el-select v-model="materialForm.chapterId" clearable class="full-select">
-            <el-option
-              v-for="chapter in chapters"
-              :key="chapter.id"
-              :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
-              :value="chapter.id"
+      <div v-if="!editingMaterialId && uploadDrafts.length" class="batch-upload-list">
+        <section v-for="(draft, index) in uploadDrafts" :key="draft.uid" class="batch-upload-card">
+          <div class="batch-upload-card-heading">
+            <span>{{ String(index + 1).padStart(2, '0') }}</span>
+            <div>
+              <strong>{{ draft.name }}</strong>
+              <p>{{ formatFileSize(draft.size) }}</p>
+            </div>
+          </div>
+          <el-form-item label="资料标题">
+            <el-input v-model="draft.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
+          </el-form-item>
+          <div class="form-grid">
+            <el-form-item label="资料类型">
+              <el-select v-model="draft.materialType" class="full-select">
+                <el-option label="课件" value="SLIDE" />
+                <el-option label="实验报告" value="LAB_REPORT" />
+                <el-option label="往年真题" value="EXAM" />
+                <el-option label="复习笔记" value="NOTE" />
+                <el-option label="代码样例" value="CODE" />
+                <el-option label="其他" value="OTHER" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="所属章节">
+              <el-select v-model="draft.chapterId" clearable class="full-select">
+                <el-option
+                  v-for="chapter in chapters"
+                  :key="chapter.id"
+                  :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                  :value="chapter.id"
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+          <div class="form-grid">
+            <el-form-item label="年份">
+              <el-input-number v-model="draft.year" :min="1900" :max="2100" />
+            </el-form-item>
+            <el-form-item label="重点资料">
+              <el-switch v-model="draft.isKey" />
+            </el-form-item>
+          </div>
+          <el-form-item label="摘要">
+            <el-input
+              v-model="draft.summary"
+              type="textarea"
+              :rows="2"
+              placeholder="简单描述资料内容、用途或重点。"
             />
-          </el-select>
-        </el-form-item>
+          </el-form-item>
+        </section>
       </div>
-      <div class="form-grid">
-        <el-form-item label="年份">
-          <el-input-number v-model="materialForm.year" :min="1900" :max="2100" />
+      <template v-if="editingMaterialId">
+        <el-form-item label="资料标题">
+          <el-input v-model="materialForm.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
         </el-form-item>
-        <el-form-item label="重点资料">
-          <el-switch v-model="materialForm.isKey" />
+        <div class="form-grid">
+          <el-form-item label="资料类型">
+            <el-select v-model="materialForm.materialType" class="full-select">
+              <el-option label="课件" value="SLIDE" />
+              <el-option label="实验报告" value="LAB_REPORT" />
+              <el-option label="往年真题" value="EXAM" />
+              <el-option label="复习笔记" value="NOTE" />
+              <el-option label="代码样例" value="CODE" />
+              <el-option label="其他" value="OTHER" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="所属章节">
+            <el-select v-model="materialForm.chapterId" clearable class="full-select">
+              <el-option
+                v-for="chapter in chapters"
+                :key="chapter.id"
+                :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                :value="chapter.id"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="form-grid">
+          <el-form-item label="年份">
+            <el-input-number v-model="materialForm.year" :min="1900" :max="2100" />
+          </el-form-item>
+          <el-form-item label="重点资料">
+            <el-switch v-model="materialForm.isKey" />
+          </el-form-item>
+        </div>
+        <el-form-item label="摘要">
+          <el-input
+            v-model="materialForm.summary"
+            type="textarea"
+            :rows="3"
+            placeholder="简单描述资料内容、用途或重点。"
+          />
         </el-form-item>
-      </div>
-      <el-form-item label="摘要">
-        <el-input
-          v-model="materialForm.summary"
-          type="textarea"
-          :rows="3"
-          placeholder="简单描述资料内容、用途或重点。"
-        />
-      </el-form-item>
+      </template>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
@@ -1832,7 +1887,7 @@ import {
   listTextChunks,
   parsePdf,
   updateMaterial,
-  uploadMaterial
+  uploadMaterialsBatch
 } from '../../api/material'
 import { listSearchRecords, searchMaterials } from '../../api/search'
 import {
@@ -1951,7 +2006,8 @@ const selectedGapReport = ref(null)
 const selectedTeacherProfile = ref(null)
 const editingReviewProfileId = ref(null)
 const editingAiProviderId = ref(null)
-const selectedFile = ref(null)
+const uploadFileList = ref([])
+const uploadDrafts = ref([])
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
 const textChunks = ref([])
@@ -3161,25 +3217,26 @@ function openKnowledgeResult() {
   activeSection.value = 'knowledge'
 }
 
-function handleFileChange(uploadFile) {
-  selectedFile.value = uploadFile.raw
-  if (!materialForm.title && uploadFile.name) {
-    materialForm.title = uploadFile.name.replace(/\.[^.]+$/, '')
-  }
-}
-
-function handleFileRemove() {
-  selectedFile.value = null
-}
-
 async function saveMaterial() {
-  if (!editingMaterialId.value && !selectedFile.value) {
+  if (!editingMaterialId.value && uploadDrafts.value.length === 0) {
     ElMessage.warning('请选择资料文件')
     return
   }
-  if (!materialForm.title.trim()) {
+  if (editingMaterialId.value && !materialForm.title.trim()) {
     ElMessage.warning('请输入资料标题')
     return
+  }
+  if (!editingMaterialId.value) {
+    const missingTitle = uploadDrafts.value.find(draft => !draft.title.trim())
+    if (missingTitle) {
+      ElMessage.warning(`请填写「${missingTitle.name}」的资料标题`)
+      return
+    }
+    const missingFile = uploadDrafts.value.find(draft => !draft.file)
+    if (missingFile) {
+      ElMessage.warning(`请重新选择「${missingFile.name}」`)
+      return
+    }
   }
 
   materialSaving.value = true
@@ -3207,26 +3264,65 @@ async function saveMaterial() {
     const data = new FormData()
     data.append('userId', currentUser.value.id)
     data.append('courseId', selectedCourse.value.id)
-    data.append('title', materialForm.title.trim())
-    data.append('materialType', materialForm.materialType)
-    data.append('year', materialForm.year)
-    data.append('isKey', materialForm.isKey)
-    data.append('summary', materialForm.summary.trim())
-    data.append('file', selectedFile.value)
-    if (materialForm.chapterId) {
-      data.append('chapterId', materialForm.chapterId)
-    }
+    uploadDrafts.value.forEach(draft => {
+      data.append('files', draft.file)
+      data.append('titles', draft.title.trim())
+      data.append('materialTypes', draft.materialType)
+      data.append('chapterIds', draft.chapterId || '')
+      data.append('years', draft.year || '')
+      data.append('isKeys', draft.isKey)
+      data.append('summaries', draft.summary.trim())
+    })
 
-    const material = await uploadMaterial(data)
-    materials.value.unshift(material)
+    const uploadedMaterials = await uploadMaterialsBatch(data)
+    materials.value.unshift(...uploadedMaterials)
     await loadCourseStats()
     resetMaterialForm()
     materialDialogVisible.value = false
-    ElMessage.success('资料上传成功')
+    ElMessage.success(`已上传 ${uploadedMaterials.length} 份资料`)
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     materialSaving.value = false
+  }
+}
+
+function handleFileChange(uploadFile, uploadFiles) {
+  syncUploadDrafts(uploadFiles)
+}
+
+function handleFileRemove(uploadFile, uploadFiles) {
+  syncUploadDrafts(uploadFiles)
+}
+
+function syncUploadDrafts(uploadFiles = []) {
+  uploadFileList.value = uploadFiles
+  const existingDrafts = new Map(uploadDrafts.value.map(draft => [draft.uid, draft]))
+  uploadDrafts.value = uploadFiles.map(uploadFile => {
+    const existing = existingDrafts.get(uploadFile.uid)
+    if (existing) {
+      existing.file = uploadFile.raw
+      existing.name = uploadFile.name
+      existing.size = uploadFile.size || uploadFile.raw?.size || 0
+      return existing
+    }
+    return createUploadDraft(uploadFile)
+  })
+}
+
+function createUploadDraft(uploadFile) {
+  const name = uploadFile.name || uploadFile.raw?.name || ''
+  return {
+    uid: uploadFile.uid,
+    file: uploadFile.raw,
+    name,
+    size: uploadFile.size || uploadFile.raw?.size || 0,
+    title: name.replace(/\.[^.]+$/, ''),
+    materialType: materialForm.materialType,
+    chapterId: materialForm.chapterId,
+    year: materialForm.year,
+    isKey: materialForm.isKey,
+    summary: materialForm.summary
   }
 }
 
@@ -3577,7 +3673,8 @@ function resetMaterialForm() {
   materialForm.year = new Date().getFullYear()
   materialForm.isKey = false
   materialForm.summary = ''
-  selectedFile.value = null
+  uploadFileList.value = []
+  uploadDrafts.value = []
 }
 
 function formatFileSize(size) {
@@ -7421,6 +7518,65 @@ button {
   margin-top: 7px;
   color: #777;
   font-size: 12px;
+}
+
+.batch-upload-list {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.batch-upload-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #faf9f6;
+}
+
+.batch-upload-card :global(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.batch-upload-card-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.batch-upload-card-heading > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: var(--dialog-accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.batch-upload-card-heading strong,
+.batch-upload-card-heading p {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-upload-card-heading strong {
+  font-size: 16px;
+}
+
+.batch-upload-card-heading p {
+  margin: 4px 0 0;
+  color: #666;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .text-preview {

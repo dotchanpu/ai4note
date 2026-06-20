@@ -185,6 +185,7 @@ PUT  /api/courses/{courseId}/chapters/{chapterId}?userId={userId}
 DELETE /api/courses/{courseId}/chapters/{chapterId}?userId={userId}
 GET  /api/courses/{courseId}/materials?userId={userId}
 POST /api/materials
+POST /api/materials/batch
 PUT  /api/materials/{materialId}?userId={userId}
 DELETE /api/materials/{materialId}?userId={userId}
 POST /api/materials/{materialId}/parse?userId={userId}
