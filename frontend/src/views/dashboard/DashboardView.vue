@@ -1510,11 +1510,24 @@
               <div v-loading="exportLoading" class="export-record-grid">
                 <article v-for="record in exportRecords" :key="record.id" class="export-record-card">
                   <div>
-                    <span>{{ record.exportFormat }}</span>
+                    <div class="export-record-tags">
+                      <span>v{{ record.versionNo || 1 }}</span>
+                      <span>{{ record.exportFormat }}</span>
+                      <span v-if="record.recommended" class="recommended-version">推荐版本</span>
+                    </div>
                     <h3>{{ record.exportName }}</h3>
                     <p>{{ formatExportTime(record.exportTime) }}</p>
                   </div>
-                  <button type="button" @click="downloadExport(record)">下载 ZIP</button>
+                  <div class="export-record-actions">
+                    <button type="button" @click="downloadExport(record)">下载 ZIP</button>
+                    <button
+                      type="button"
+                      :disabled="record.recommended"
+                      @click="setRecommendedExport(record)"
+                    >
+                      {{ record.recommended ? '当前推荐' : '设为推荐' }}
+                    </button>
+                  </div>
                 </article>
                 <div v-if="!exportLoading && exportRecords.length === 0" class="export-empty">
                   <strong>还没有导出记录。</strong>
@@ -1984,6 +1997,7 @@ import {
   exportDownloadUrl,
   listExportRecords,
   listExportTemplates,
+  markExportRecommended,
   previewExport
 } from '../../api/export'
 import {
@@ -2925,6 +2939,19 @@ function buildExportPayload() {
 
 function downloadExport(record) {
   window.open(exportDownloadUrl(record.id, currentUser.value.id), '_blank')
+}
+
+async function setRecommendedExport(record) {
+  try {
+    const updated = await markExportRecommended(record.id, currentUser.value.id)
+    exportRecords.value = exportRecords.value.map(item => ({
+      ...item,
+      recommended: item.id === updated.id
+    }))
+    ElMessage.success(`v${updated.versionNo || 1} 已设为推荐版本`)
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
 }
 
 function formatExportTime(value) {
@@ -7649,7 +7676,14 @@ button {
   box-shadow: 8px 8px 0 #111;
 }
 
-.export-record-card span {
+.export-record-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.export-record-tags span {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
@@ -7658,6 +7692,10 @@ button {
   background: #ffef5a;
   font-size: 11px;
   font-weight: 900;
+}
+
+.export-record-tags .recommended-version {
+  background: #0de0c0;
 }
 
 .export-record-card h3 {
@@ -7675,10 +7713,22 @@ button {
   font-size: 12px;
 }
 
+.export-record-actions {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+}
+
 .export-record-card button {
   flex: 0 0 auto;
   padding: 0 16px;
   background: #14cbea;
+}
+
+.export-record-card button:disabled {
+  background: #eee;
+  color: #777;
+  cursor: default;
 }
 
 .export-empty {

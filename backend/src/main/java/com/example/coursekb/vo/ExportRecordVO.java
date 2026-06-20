@@ -12,6 +12,8 @@ public class ExportRecordVO {
     private String exportFormat;
     private String exportPath;
     private String exportScope;
+    private Integer versionNo;
+    private Boolean recommended;
     private LocalDateTime exportTime;
 
     public static ExportRecordVO from(ExportRecord record) {
@@ -24,6 +26,8 @@ public class ExportRecordVO {
         result.exportFormat = record.getExportFormat();
         result.exportPath = record.getExportPath();
         result.exportScope = record.getExportScope();
+        result.versionNo = record.getVersionNo();
+        result.recommended = record.getRecommended();
         result.exportTime = record.getExportTime();
         return result;
     }
@@ -36,5 +40,7 @@ public class ExportRecordVO {
     public String getExportFormat() { return exportFormat; }
     public String getExportPath() { return exportPath; }
     public String getExportScope() { return exportScope; }
+    public Integer getVersionNo() { return versionNo; }
+    public Boolean getRecommended() { return recommended; }
     public LocalDateTime getExportTime() { return exportTime; }
 }

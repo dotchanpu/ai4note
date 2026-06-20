@@ -97,3 +97,15 @@ AI 知识整理读取 `text_chunk` 中带页码的解析正文，通过 DeepSeek
 ### ai_generation_task
 
 保存 AI 生成任务记录。任务类型可以包括教师画像分析、真题知识点映射、知识缺口检测、资料摘要生成、资料关键词提取、复习提纲生成、模拟题生成、知识包摘要生成等。任务记录保存提示词、执行状态、结果路径和失败原因。
+
+### export_record
+
+保存课程知识包导出历史。`version_no` 记录同一用户、同一课程下递增的导出版本号；`recommended` 标记当前推荐版本，同一课程范围内只保留一个推荐版本。历史版本继续使用 `export_path` 下载原始 ZIP。
+
+现有数据库升级时需要补充字段：
+
+```sql
+ALTER TABLE export_record
+  ADD COLUMN version_no INT NOT NULL DEFAULT 1,
+  ADD COLUMN recommended TINYINT NOT NULL DEFAULT 0;
+```

@@ -16,6 +16,12 @@ export function createExport(data) {
   })
 }
 
+export function markExportRecommended(exportId, userId) {
+  return request.put(`/exports/${exportId}/recommended`, null, {
+    params: { userId }
+  })
+}
+
 export function previewExport(data) {
   return request.post('/exports/preview', data)
 }

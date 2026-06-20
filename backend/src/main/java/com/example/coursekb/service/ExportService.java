@@ -134,6 +134,8 @@ public class ExportService {
         record.setExportFormat(exportFormat);
         record.setExportPath(storageRoot.relativize(outputPath).toString().replace('\\', '/'));
         record.setExportScope(scope.toJson());
+        record.setVersionNo(nextVersionNo(request.getUserId(), course.getId()));
+        record.setRecommended(false);
         return ExportRecordVO.from(exportRecordRepository.save(record));
     }
 
@@ -164,6 +166,21 @@ public class ExportService {
                 .orElseThrow(() -> new BusinessException("导出记录不存在或无权访问"));
         courseService.getOwnedCourse(record.getCourseId(), userId);
         return ExportRecordVO.from(record);
+    }
+
+    @Transactional
+    public ExportRecordVO markRecommended(Long exportId, Long userId) {
+        ExportRecord record = exportRecordRepository.findByIdAndUserId(exportId, userId)
+                .orElseThrow(() -> new BusinessException("导出记录不存在或无权访问"));
+        courseService.getOwnedCourse(record.getCourseId(), userId);
+        exportRecordRepository.clearRecommended(userId, record.getCourseId());
+        record.setRecommended(true);
+        return ExportRecordVO.from(exportRecordRepository.save(record));
+    }
+
+    private int nextVersionNo(Long userId, Long courseId) {
+        Integer maxVersion = exportRecordRepository.findMaxVersionNo(userId, courseId);
+        return (maxVersion == null ? 0 : maxVersion) + 1;
     }
 
     private ExportPreviewVO buildPreview(
