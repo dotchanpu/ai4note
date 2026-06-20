@@ -167,12 +167,43 @@
                 <span>chapters</span>
               </div>
               <div>
-                <strong>{{ String(materials.length).padStart(2, '0') }}</strong>
+                <strong>{{ String(overviewStats.materialCount).padStart(2, '0') }}</strong>
                 <span>materials</span>
               </div>
               <div>
-                <strong>{{ materials.filter(item => item.parsedChunkCount > 0).length }}</strong>
+                <strong>{{ overviewStats.parsedMaterialCount }}</strong>
                 <span>parsed</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.knowledgeItemCount }}</strong>
+                <span>knowledge</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.examQuestionCount }}</strong>
+                <span>questions</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.examMappingCount }}</strong>
+                <span>mappings</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.exportCount }}</strong>
+                <span>exports</span>
+              </div>
+            </div>
+            <div v-loading="courseStatsLoading" class="course-type-distribution">
+              <div class="type-distribution-heading">
+                <strong>资料类型分布</strong>
+                <span>{{ overviewStats.materialCount }} 份资料</span>
+              </div>
+              <div class="type-distribution-list">
+                <div v-for="item in materialTypeDistribution" :key="item.type" class="type-distribution-row">
+                  <span>{{ item.label }}</span>
+                  <div>
+                    <i :style="{ width: `${item.percent}%` }"></i>
+                  </div>
+                  <strong>{{ item.count }}</strong>
+                </div>
               </div>
             </div>
           </section>
@@ -1202,6 +1233,7 @@
               :knowledge-items="knowledgeItems"
               :preferred-material-id="examPreferredMaterialId"
               @material-parsed="handleExamMaterialParsed"
+              @stats-changed="loadCourseStats"
             />
           </section>
 
@@ -1758,6 +1790,7 @@ import {
   deleteChapter,
   deleteCourse,
   deleteCourseRelation,
+  getCourseStats,
   listChapters,
   listCourses,
   listCourseRelations,
@@ -1819,6 +1852,7 @@ const currentUser = ref(null)
 const authMode = ref('login')
 const authLoading = ref(false)
 const courseLoading = ref(false)
+const courseStatsLoading = ref(false)
 const chapterLoading = ref(false)
 const materialLoading = ref(false)
 const searchLoading = ref(false)
@@ -1863,6 +1897,7 @@ const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
 const courseRelations = ref([])
+const courseStats = ref(null)
 const searchResults = ref([])
 const knowledgeItems = ref([])
 const gapReports = ref([])
@@ -1927,6 +1962,30 @@ const aiTaskStats = computed(() => ({
   running: aiGenerationTasks.value.filter(task => task.status === 'RUNNING' || task.status === 'PENDING').length,
   failed: aiGenerationTasks.value.filter(task => task.status === 'FAILED').length
 }))
+
+const overviewStats = computed(() => ({
+  materialCount: courseStats.value?.materialCount ?? materials.value.length,
+  parsedMaterialCount: courseStats.value?.parsedMaterialCount
+    ?? materials.value.filter(item => item.parsedChunkCount > 0).length,
+  knowledgeItemCount: courseStats.value?.knowledgeItemCount ?? knowledgeItems.value.length,
+  examQuestionCount: courseStats.value?.examQuestionCount ?? 0,
+  examMappingCount: courseStats.value?.examMappingCount ?? 0,
+  exportCount: courseStats.value?.exportCount ?? exportRecords.value.length
+}))
+
+const materialTypeDistribution = computed(() => {
+  const stats = courseStats.value?.materialTypeStats || []
+  return materialTypeOptions.map(option => {
+    const match = stats.find(item => item.materialType === option.type)
+    const count = match?.count || 0
+    const total = overviewStats.value.materialCount || 0
+    return {
+      ...option,
+      count,
+      percent: total > 0 ? Math.round((count / total) * 100) : 0
+    }
+  })
+})
 
 const parsedMaterials = computed(() => materials.value.filter(
   material => material.parsedChunkCount > 0
@@ -2167,6 +2226,7 @@ async function loadCourses() {
       chapters.value = []
       materials.value = []
       courseRelations.value = []
+      courseStats.value = null
       clearGapState()
       clearTeacherProfileState()
       clearReviewProfileState()
@@ -2206,6 +2266,7 @@ async function selectCourse(course) {
     resetExportForm()
     await Promise.all([
       loadKnowledgeItems(),
+      loadCourseStats(),
       loadCourseTags(),
       loadExportData(),
       loadGapReports(),
@@ -2231,6 +2292,18 @@ async function loadCourseRelations() {
     ElMessage.error(error.message)
   } finally {
     relationLoading.value = false
+  }
+}
+
+async function loadCourseStats() {
+  if (!selectedCourse.value || !currentUser.value) return
+  courseStatsLoading.value = true
+  try {
+    courseStats.value = await getCourseStats(selectedCourse.value.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    courseStatsLoading.value = false
   }
 }
 
@@ -2613,6 +2686,7 @@ async function runExport() {
     const record = await createExport(payload)
     exportRecords.value.unshift(record)
     exportPreview.value = null
+    await loadCourseStats()
     ElMessage.success('知识包已生成')
     downloadExport(record)
   } catch (error) {
@@ -2748,6 +2822,7 @@ async function generateKnowledge() {
     )
     selectedMaterialTags.value = result.tags
     await Promise.all([loadKnowledgeItems(), loadCourseTags()])
+    await loadCourseStats()
     ElMessage.success(`AI 已整理 ${result.items.length} 条知识`)
   } catch (error) {
     ElMessage.error(error.message)
@@ -3062,6 +3137,7 @@ async function saveMaterial() {
         }
       )
       replaceItem(materials.value, updated)
+      await loadCourseStats()
       materialDialogVisible.value = false
       ElMessage.success('资料信息已更新')
       return
@@ -3082,6 +3158,7 @@ async function saveMaterial() {
 
     const material = await uploadMaterial(data)
     materials.value.unshift(material)
+    await loadCourseStats()
     resetMaterialForm()
     materialDialogVisible.value = false
     ElMessage.success('资料上传成功')
@@ -3097,6 +3174,7 @@ async function runPdfParse(material) {
   try {
     const result = await parsePdf(material.id, currentUser.value.id)
     material.parsedChunkCount = result.chunkCount
+    await loadCourseStats()
     ElMessage.success(`解析完成，共提取 ${result.chunkCount} 个文本块`)
   } catch (error) {
     ElMessage.error(error.message)
@@ -3128,6 +3206,7 @@ function handleExamMaterialParsed({ materialId, chunkCount }) {
   if (target) {
     target.parsedChunkCount = chunkCount
   }
+  loadCourseStats()
 }
 
 async function saveCourse() {
@@ -3274,6 +3353,7 @@ async function removeKnowledgeItem(itemId) {
       currentUser.value.id
     )
     knowledgeItems.value = knowledgeItems.value.filter(item => item.id !== itemId)
+    await loadCourseStats()
     deleteDialogVisible.value = false
     ElMessage.success('知识条目已删除')
   } catch (error) {
@@ -3326,6 +3406,7 @@ async function removeMaterial(materialId) {
   try {
     await deleteMaterial(materialId, currentUser.value.id)
     materials.value = materials.value.filter(item => item.id !== materialId)
+    await loadCourseStats()
     materialDialogVisible.value = false
     deleteDialogVisible.value = false
     ElMessage.success('资料已删除')
@@ -3345,6 +3426,7 @@ function logout() {
   chapters.value = []
   materials.value = []
   courseRelations.value = []
+  courseStats.value = null
   selectedCourse.value = null
   clearGapState()
   clearTeacherProfileState()
@@ -4020,7 +4102,7 @@ button {
 
 .hero-stats > div {
   min-width: 150px;
-  padding: 20px;
+  padding: 15px 18px;
   border: 1px solid #111;
   background: rgba(255, 255, 255, 0.9);
 }
@@ -4031,7 +4113,7 @@ button {
 }
 
 .hero-stats strong {
-  font-size: 38px;
+  font-size: 34px;
   line-height: 1;
 }
 
@@ -4041,6 +4123,83 @@ button {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.course-type-distribution {
+  position: relative;
+  z-index: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.22fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 8px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transform: translateY(36px);
+  transition: opacity 0.7s 0.28s ease, transform 0.7s 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.type-distribution-heading {
+  display: grid;
+  align-content: center;
+  border-right: 1px solid #111;
+}
+
+.type-distribution-heading strong,
+.type-distribution-heading span {
+  display: block;
+}
+
+.type-distribution-heading strong {
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.type-distribution-heading span {
+  margin-top: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.type-distribution-list {
+  display: grid;
+  gap: 10px;
+}
+
+.type-distribution-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.type-distribution-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-distribution-row > div {
+  height: 9px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.type-distribution-row i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: #14cbea;
+}
+
+.type-distribution-row strong {
+  text-align: right;
 }
 
 .hero-orbit {
@@ -4072,6 +4231,7 @@ button {
 
 .course-hero.section-active .hero-copy,
 .course-hero.section-active .hero-stats,
+.course-hero.section-active .course-type-distribution,
 .course-hero.section-active .hero-orbit-one,
 .course-hero.section-active .hero-orbit-two {
   opacity: 1;
@@ -7571,6 +7731,16 @@ button {
     min-width: 0;
   }
 
+  .course-type-distribution {
+    grid-template-columns: 1fr;
+  }
+
+  .type-distribution-heading {
+    border-right: 0;
+    border-bottom: 1px solid #111;
+    padding-bottom: 14px;
+  }
+
   .chapter-track {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7767,6 +7937,10 @@ button {
 
   .hero-stats strong {
     font-size: 28px;
+  }
+
+  .type-distribution-row {
+    grid-template-columns: 78px minmax(0, 1fr) 34px;
   }
 
   .section-intro,

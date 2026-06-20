@@ -4,6 +4,8 @@ import com.example.coursekb.dto.CourseRequest;
 import com.example.coursekb.entity.Course;
 import com.example.coursekb.service.ContentDeletionService;
 import com.example.coursekb.service.CourseService;
+import com.example.coursekb.service.CourseStatsService;
+import com.example.coursekb.vo.CourseStatsVO;
 import java.util.List;
 import javax.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,12 +23,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class CourseController {
     private final CourseService courseService;
     private final ContentDeletionService contentDeletionService;
+    private final CourseStatsService courseStatsService;
 
     public CourseController(
             CourseService courseService,
-            ContentDeletionService contentDeletionService) {
+            ContentDeletionService contentDeletionService,
+            CourseStatsService courseStatsService) {
         this.courseService = courseService;
         this.contentDeletionService = contentDeletionService;
+        this.courseStatsService = courseStatsService;
     }
 
     @GetMapping
@@ -37,6 +42,11 @@ public class CourseController {
     @GetMapping("/{courseId}")
     public Course detail(@PathVariable Long courseId, @RequestParam Long userId) {
         return courseService.getOwnedCourse(courseId, userId);
+    }
+
+    @GetMapping("/{courseId}/stats")
+    public CourseStatsVO stats(@PathVariable Long courseId, @RequestParam Long userId) {
+        return courseStatsService.getStats(courseId, userId);
     }
 
     @PostMapping

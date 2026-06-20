@@ -11,6 +11,7 @@
 - 课程详情展示
 - 课程章节列表、章节创建、信息修改与删除；删除章节时保留资料并解除章节关联
 - 课程资料上传、连续上传、文件落盘、分类展示、详情修改与文件清理删除
+- 课程维度资料统计，展示资料数量、类型分布、已解析数量、知识条目、真题、映射和导出次数
 - PDF 按页提取、无意义换行清理、段落/句子感知分块、覆盖解析与清晰文本预览
 - 统一检索资料标题、摘要、标签、PDF 正文和知识条目，支持章节、资料类型和重点标记筛选
 - DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
@@ -177,6 +178,7 @@ GET  /api/courses/{courseId}?userId={userId}
 POST /api/courses
 PUT  /api/courses/{courseId}
 DELETE /api/courses/{courseId}?userId={userId}
+GET  /api/courses/{courseId}/stats?userId={userId}
 GET  /api/courses/{courseId}/chapters?userId={userId}
 POST /api/courses/{courseId}/chapters?userId={userId}
 PUT  /api/courses/{courseId}/chapters/{chapterId}?userId={userId}

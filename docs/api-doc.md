@@ -170,7 +170,46 @@ GET /api/courses?userId=1
 |---|---|---|
 | `userId` | 是 | 当前用户 ID，用于检查课程归属 |
 
-### 5.3 创建课程知识库
+### 5.3 查询课程资料统计
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/stats`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID，用于检查课程归属 |
+
+响应示例：
+
+```json
+{
+  "courseId": 1,
+  "courseName": "数据结构与算法",
+  "materialCount": 12,
+  "parsedMaterialCount": 10,
+  "knowledgeItemCount": 86,
+  "examQuestionCount": 45,
+  "examMappingCount": 58,
+  "exportCount": 4,
+  "materialTypeStats": [
+    {
+      "materialType": "SLIDE",
+      "count": 6
+    },
+    {
+      "materialType": "EXAM",
+      "count": 3
+    }
+  ]
+}
+```
+
+统计口径：资料数量和类型分布来自 `material`；已解析数量按存在解析文本块的资料数计算；知识条目、真题、映射和导出次数分别来自 `knowledge_item`、`exam_question`、`exam_question_knowledge_map` 和 `export_record`。
+
+### 5.4 创建课程知识库
 
 - 状态：已实现
 - 方法：`POST`
@@ -196,7 +235,7 @@ GET /api/courses?userId=1
 | `semester` | 否 | 所属学期 |
 | `description` | 否 | 课程简介 |
 
-### 5.4 修改课程
+### 5.5 修改课程
 
 - 状态：已实现
 - 方法：`PUT`
@@ -204,7 +243,7 @@ GET /api/courses?userId=1
 
 请求体与创建课程相同，`userId` 用于校验课程归属。
 
-### 5.5 删除课程
+### 5.6 删除课程
 
 - 状态：已实现
 - 方法：`DELETE`
