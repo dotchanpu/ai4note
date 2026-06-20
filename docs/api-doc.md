@@ -883,13 +883,15 @@ UNREVIEWED
 
 ### 13.1 查询课程教师画像
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/teacher-profiles`
 
+查询参数：`userId`。按最近更新时间倒序返回课程教师画像，字段包括教师名称、分析状态、置信度、出题风格、题型偏好、评分偏好、重点章节、规避内容、依据摘要和最近分析时间。
+
 ### 13.2 发起教师画像 AI 分析
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/teacher-profiles/analyze`
 
@@ -900,11 +902,14 @@ UNREVIEWED
   "userId": 1,
   "teacherName": "张老师",
   "materialIds": [11, 12, 13],
-  "providerConfigId": 1
+  "providerConfigId": 1,
+  "model": "deepseek-v4-flash"
 }
 ```
 
 系统综合课件、往年真题、实验要求和评分标准，分析教师的出题风格、常见题型、评分偏好和重点章节。
+
+当前实现使用 DeepSeek 默认配置调用结构化 JSON 分析；`providerConfigId` 字段预留给多供应商 AI 配置模块。分析成功后写入 `teacher_profile`，失败时保留 `FAILED` 状态记录。
 
 ### 13.3 查询教师画像证据
 

@@ -757,6 +757,116 @@
           </section>
 
           <section
+            id="teacher"
+            class="teacher-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'teacher' }"
+          >
+            <div class="teacher-heading">
+              <div>
+                <p class="eyebrow">教师画像</p>
+                <h2>分析出题风格<span>.</span></h2>
+              </div>
+              <p>基于课程资料和往年真题归纳教师的出题风格、题型偏好、评分偏好和复习重点。</p>
+            </div>
+
+            <div class="teacher-layout">
+              <aside class="teacher-control">
+                <div class="teacher-form">
+                  <label>
+                    <span>教师名称</span>
+                    <el-input v-model="teacherProfileForm.teacherName" maxlength="128" placeholder="例如：张老师" />
+                  </label>
+                  <label>
+                    <span>分析资料</span>
+                    <el-select
+                      v-model="teacherProfileForm.materialIds"
+                      multiple
+                      collapse-tags
+                      clearable
+                      placeholder="默认使用全部可分析资料"
+                    >
+                      <el-option
+                        v-for="material in teacherProfileMaterials"
+                        :key="material.id"
+                        :label="material.title"
+                        :value="material.id"
+                      />
+                    </el-select>
+                  </label>
+                  <button
+                    type="button"
+                    :disabled="teacherProfileAnalyzing"
+                    @click="runTeacherProfileAnalysis"
+                  >
+                    {{ teacherProfileAnalyzing ? '分析中…' : '开始分析' }}
+                  </button>
+                </div>
+
+                <div v-loading="teacherProfileLoading" class="teacher-profile-list">
+                  <button
+                    v-for="profile in teacherProfiles"
+                    :key="profile.id"
+                    type="button"
+                    :class="{ active: selectedTeacherProfile?.id === profile.id }"
+                    @click="selectedTeacherProfile = profile"
+                  >
+                    <strong>{{ profile.teacherName }}</strong>
+                    <span>{{ teacherStatusLabel(profile.analysisStatus) }}</span>
+                  </button>
+                  <div
+                    v-if="!teacherProfileLoading && teacherProfiles.length === 0"
+                    class="teacher-empty-list"
+                  >
+                    还没有教师画像
+                  </div>
+                </div>
+              </aside>
+
+              <div class="teacher-profile-detail">
+                <template v-if="selectedTeacherProfile">
+                  <div class="teacher-profile-top">
+                    <div>
+                      <span>{{ teacherStatusLabel(selectedTeacherProfile.analysisStatus) }}</span>
+                      <h3>{{ selectedTeacherProfile.teacherName }}</h3>
+                    </div>
+                    <strong>{{ selectedTeacherProfile.confidenceScore ?? 0 }}%</strong>
+                  </div>
+                  <div class="teacher-profile-grid">
+                    <section>
+                      <span>出题风格</span>
+                      <p>{{ selectedTeacherProfile.examStyle || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>题型偏好</span>
+                      <p>{{ selectedTeacherProfile.questionPreference || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>评分偏好</span>
+                      <p>{{ selectedTeacherProfile.gradingPreference || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>重点章节</span>
+                      <p>{{ selectedTeacherProfile.focusTopics || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>规避内容</span>
+                      <p>{{ selectedTeacherProfile.avoidTopics || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>依据摘要</span>
+                      <p>{{ selectedTeacherProfile.sourceSummary || '暂无分析结果' }}</p>
+                    </section>
+                  </div>
+                </template>
+                <div v-else class="teacher-empty-detail">
+                  <strong>先生成教师画像。</strong>
+                  <p>建议选择课件、真题和评分相关资料一起分析。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
             id="exam"
             class="exam-section scroll-panel"
             :class="{ 'section-active': activeSection === 'exam' }"
@@ -1243,6 +1353,10 @@ import {
   listKnowledgeGapItems,
   listKnowledgeGapReports
 } from '../../api/gap'
+import {
+  analyzeTeacherProfile,
+  listTeacherProfiles
+} from '../../api/teacher'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -1259,6 +1373,8 @@ const knowledgeGenerating = ref(false)
 const gapLoading = ref(false)
 const gapGenerating = ref(false)
 const gapItemLoading = ref(false)
+const teacherProfileLoading = ref(false)
+const teacherProfileAnalyzing = ref(false)
 const tagSaving = ref(false)
 const exportLoading = ref(false)
 const exportCreating = ref(false)
@@ -1285,6 +1401,7 @@ const searchResults = ref([])
 const knowledgeItems = ref([])
 const gapReports = ref([])
 const gapItems = ref([])
+const teacherProfiles = ref([])
 const courseTags = ref([])
 const exportTemplates = ref([])
 const exportRecords = ref([])
@@ -1293,6 +1410,7 @@ const selectedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
 const selectedGapReport = ref(null)
+const selectedTeacherProfile = ref(null)
 const selectedFile = ref(null)
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
@@ -1308,6 +1426,7 @@ const pageSections = [
   { id: 'search', label: '检索', title: '课程检索' },
   { id: 'knowledge', label: '知识', title: '知识条目' },
   { id: 'gaps', label: '缺口', title: '知识缺口' },
+  { id: 'teacher', label: '画像', title: '教师画像' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
@@ -1377,6 +1496,10 @@ const gapStats = computed(() => ({
   severe: gapItems.value.filter(item => item.severityLevel >= 4).length,
   prerequisite: gapItems.value.filter(item => item.relatedCourseRelationId).length
 }))
+
+const teacherProfileMaterials = computed(() => materials.value.filter(material => (
+  material.parsedChunkCount > 0 || material.materialType === 'EXAM'
+)))
 
 const deleteDialogTitle = computed(() => {
   if (deleteTarget.value?.type === 'course') return '删除这门课程'
@@ -1450,6 +1573,11 @@ const gapForm = reactive({
   includePrerequisites: true
 })
 
+const teacherProfileForm = reactive({
+  teacherName: '',
+  materialIds: []
+})
+
 const exportForm = reactive({
   exportName: '',
   templateId: null,
@@ -1513,6 +1641,7 @@ async function loadCourses() {
       materials.value = []
       courseRelations.value = []
       clearGapState()
+      clearTeacherProfileState()
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1527,6 +1656,7 @@ async function selectCourse(course) {
   examPreferredMaterialId.value = null
   resetRelationForm()
   resetGapForm()
+  resetTeacherProfileForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
@@ -1543,7 +1673,13 @@ async function selectCourse(course) {
     materials.value = materialData
     courseRelations.value = relationData
     resetExportForm()
-    await Promise.all([loadKnowledgeItems(), loadCourseTags(), loadExportData(), loadGapReports()])
+    await Promise.all([
+      loadKnowledgeItems(),
+      loadCourseTags(),
+      loadExportData(),
+      loadGapReports(),
+      loadTeacherProfiles()
+    ])
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -1668,6 +1804,44 @@ async function selectGapReport(report) {
     ElMessage.error(error.message)
   } finally {
     gapItemLoading.value = false
+  }
+}
+
+async function loadTeacherProfiles() {
+  if (!selectedCourse.value || !currentUser.value) return
+  teacherProfileLoading.value = true
+  try {
+    teacherProfiles.value = await listTeacherProfiles(selectedCourse.value.id, currentUser.value.id)
+    selectedTeacherProfile.value = teacherProfiles.value[0] || null
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileLoading.value = false
+  }
+}
+
+async function runTeacherProfileAnalysis() {
+  if (!selectedCourse.value || !currentUser.value) return
+  if (!teacherProfileForm.teacherName.trim()) {
+    ElMessage.warning('请输入教师名称')
+    return
+  }
+  teacherProfileAnalyzing.value = true
+  try {
+    const profile = await analyzeTeacherProfile(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherName: teacherProfileForm.teacherName.trim(),
+      materialIds: teacherProfileForm.materialIds
+    })
+    teacherProfiles.value = [profile, ...teacherProfiles.value.filter(item => item.id !== profile.id)]
+    selectedTeacherProfile.value = profile
+    resetTeacherProfileForm()
+    ElMessage.success('教师画像分析完成')
+  } catch (error) {
+    await loadTeacherProfiles()
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileAnalyzing.value = false
   }
 }
 
@@ -1895,6 +2069,17 @@ function clearGapState() {
   resetGapForm()
 }
 
+function resetTeacherProfileForm() {
+  teacherProfileForm.teacherName = ''
+  teacherProfileForm.materialIds = []
+}
+
+function clearTeacherProfileState() {
+  teacherProfiles.value = []
+  selectedTeacherProfile.value = null
+  resetTeacherProfileForm()
+}
+
 function resetExportForm() {
   exportForm.exportName = selectedCourse.value
     ? `${selectedCourse.value.courseName} 知识包`
@@ -1935,6 +2120,14 @@ function relationTypeLabel(type) {
 
 function formatGapTime(value) {
   return value ? new Date(value).toLocaleString() : '刚刚'
+}
+
+function teacherStatusLabel(status) {
+  if (status === 'RUNNING') return '分析中'
+  if (status === 'SUCCESS') return '已完成'
+  if (status === 'FAILED') return '失败'
+  if (status === 'MANUAL_REVIEWED') return '已人工确认'
+  return '等待分析'
 }
 
 function matchSourceLabel(source) {
@@ -2245,6 +2438,7 @@ async function removeCourse(courseId) {
       materials.value = []
       courseRelations.value = []
       clearGapState()
+      clearTeacherProfileState()
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -2294,6 +2488,7 @@ function logout() {
   courseRelations.value = []
   selectedCourse.value = null
   clearGapState()
+  clearTeacherProfileState()
 }
 
 function openCourseCreator() {
@@ -4545,6 +4740,229 @@ button {
   font-size: 12px;
 }
 
+.teacher-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #111;
+}
+
+.teacher-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.teacher-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.teacher-heading h2 span {
+  color: #0de0c0;
+}
+
+.teacher-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.teacher-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+
+.teacher-control {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.teacher-form,
+.teacher-profile-list,
+.teacher-profile-detail {
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.teacher-form {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  box-shadow: 8px 8px 0 #0de0c0;
+}
+
+.teacher-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.teacher-form .el-select),
+:deep(.teacher-form .el-input) {
+  width: 100%;
+}
+
+:deep(.teacher-form .el-select__wrapper),
+:deep(.teacher-form .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.teacher-form button {
+  min-height: 48px;
+  border: 1px solid #fff;
+  background: #0de0c0;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.teacher-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.teacher-profile-list {
+  min-height: 230px;
+  padding: 16px;
+}
+
+.teacher-profile-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid #555;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teacher-profile-list > button.active {
+  border-color: #0de0c0;
+  box-shadow: inset 5px 0 0 #0de0c0;
+}
+
+.teacher-profile-list > button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-profile-list > button span {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.teacher-empty-list {
+  min-height: 170px;
+  display: grid;
+  place-content: center;
+  color: #888;
+  font-size: 13px;
+}
+
+.teacher-profile-detail {
+  min-height: 520px;
+  padding: 24px;
+}
+
+.teacher-profile-top {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #555;
+}
+
+.teacher-profile-top span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #0de0c0;
+  color: #0de0c0;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-profile-top h3 {
+  margin: 14px 0 0;
+  font-size: 42px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-profile-top strong {
+  color: #0de0c0;
+  font-size: 46px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.teacher-profile-grid section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #444;
+  background: #141414;
+}
+
+.teacher-profile-grid span {
+  display: block;
+  color: #0de0c0;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-profile-grid p {
+  margin: 12px 0 0;
+  color: #ddd;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.teacher-empty-detail {
+  min-height: 470px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.teacher-empty-detail strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.teacher-empty-detail p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .export-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -5458,6 +5876,7 @@ button {
   .chapter-section,
   .material-section,
   .gap-section,
+  .teacher-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -5502,6 +5921,7 @@ button {
   .search-heading,
   .knowledge-heading,
   .gap-heading,
+  .teacher-heading,
   .export-heading {
     display: block;
   }
@@ -5536,6 +5956,10 @@ button {
     margin-top: 24px;
   }
 
+  .teacher-heading > p {
+    margin-top: 24px;
+  }
+
   .relation-heading > p {
     margin-top: 24px;
   }
@@ -5555,6 +5979,8 @@ button {
   .gap-layout,
   .gap-summary,
   .gap-item-grid,
+  .teacher-layout,
+  .teacher-profile-grid,
   .export-form-grid,
   .export-record-grid {
     grid-template-columns: 1fr;
