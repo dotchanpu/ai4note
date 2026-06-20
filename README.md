@@ -16,6 +16,7 @@
 - DeepSeek 课程 AI 对话接口，支持 Flash/Pro 模型和可选思考模式
 - AI 基于资料完整语义整理标签与知识条目，保留类型、页码和重要程度
 - EXAM 资料真题抽取、自动知识点映射、人工补充映射与高频考点统计
+- Agent 知识包 ZIP 导出、导出记录保存与下载
 - 课程、章节、资料卡片上的删除入口及统一风格二次确认弹窗
 - 前后端接口错误提示与参数校验
 - Vue 前端基础工作台
@@ -188,6 +189,10 @@ POST /api/materials/{materialId}/exam-questions/extract?userId={userId}&overwrit
 GET  /api/courses/{courseId}/exam-questions?userId={userId}&page={page}&size={size}
 POST /api/exam-questions/{questionId}/knowledge-map?userId={userId}
 GET  /api/courses/{courseId}/exam-knowledge-stats?userId={userId}
+GET  /api/export-templates
+POST /api/exports
+GET  /api/exports?userId={userId}&courseId={courseId}
+GET  /api/exports/{exportId}/download?userId={userId}
 ```
 
 完整接口说明见 [`docs/api-doc.md`](docs/api-doc.md)。

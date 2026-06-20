@@ -559,6 +559,102 @@
               @material-parsed="handleExamMaterialParsed"
             />
           </section>
+
+          <section
+            id="export"
+            class="export-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'export' }"
+          >
+            <div class="export-heading">
+              <div>
+                <p class="eyebrow">agent export</p>
+                <h2>导出给 Agent 使用的课程知识包<span>.</span></h2>
+              </div>
+              <p>把课程资料、标签、知识条目、章节结构和考点统计整理成 ZIP，保存导出记录并随时下载。</p>
+            </div>
+
+            <div class="export-panel">
+              <div class="export-form-grid">
+                <label class="export-field">
+                  <span>导出名称</span>
+                  <el-input v-model="exportForm.exportName" maxlength="255" placeholder="例如：期末复习知识包" />
+                </label>
+                <label class="export-field">
+                  <span>导出模板</span>
+                  <el-select v-model="exportForm.templateId" placeholder="选择模板">
+                    <el-option
+                      v-for="template in exportTemplates"
+                      :key="template.id"
+                      :label="`${template.templateName} / ${template.targetAgent}`"
+                      :value="template.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="export-field">
+                  <span>章节范围</span>
+                  <el-select v-model="exportForm.chapterIds" multiple collapse-tags clearable placeholder="全部章节">
+                    <el-option
+                      v-for="chapter in chapters"
+                      :key="chapter.id"
+                      :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                      :value="chapter.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="export-field">
+                  <span>资料类型</span>
+                  <el-select v-model="exportForm.materialTypes" multiple collapse-tags clearable placeholder="全部类型">
+                    <el-option
+                      v-for="option in materialTypeOptions"
+                      :key="option.type"
+                      :label="option.label"
+                      :value="option.type"
+                    />
+                  </el-select>
+                </label>
+              </div>
+
+              <div class="export-options">
+                <label>
+                  <el-switch v-model="exportForm.onlyKeyMaterials" />
+                  <span>只导出重点资料</span>
+                </label>
+                <label>
+                  <el-switch v-model="exportForm.includeExamStats" />
+                  <span>包含高频考点统计</span>
+                </label>
+                <button type="button" :disabled="exportCreating" @click="runExport">
+                  <span>{{ exportCreating ? '导出中…' : '生成知识包' }}</span>
+                  <strong>→</strong>
+                </button>
+              </div>
+            </div>
+
+            <div class="export-records">
+              <div class="export-record-heading">
+                <div>
+                  <strong>{{ exportRecords.length }}</strong>
+                  <span>export records</span>
+                </div>
+                <button type="button" :disabled="exportLoading" @click="loadExportData">刷新记录</button>
+              </div>
+
+              <div v-loading="exportLoading" class="export-record-grid">
+                <article v-for="record in exportRecords" :key="record.id" class="export-record-card">
+                  <div>
+                    <span>{{ record.exportFormat }}</span>
+                    <h3>{{ record.exportName }}</h3>
+                    <p>{{ formatExportTime(record.exportTime) }}</p>
+                  </div>
+                  <button type="button" @click="downloadExport(record)">下载 ZIP</button>
+                </article>
+                <div v-if="!exportLoading && exportRecords.length === 0" class="export-empty">
+                  <strong>还没有导出记录。</strong>
+                  <p>生成第一个课程知识包后，这里会保存记录和下载入口。</p>
+                </div>
+              </div>
+            </div>
+          </section>
         </template>
 
         <section v-else class="no-course">
@@ -908,6 +1004,12 @@ import {
   listMaterialTags,
   replaceMaterialTags
 } from '../../api/knowledge'
+import {
+  createExport,
+  exportDownloadUrl,
+  listExportRecords,
+  listExportTemplates
+} from '../../api/export'
 
 const currentUser = ref(null)
 const authMode = ref('login')
@@ -920,6 +1022,8 @@ const searchHasRun = ref(false)
 const knowledgeLoading = ref(false)
 const knowledgeGenerating = ref(false)
 const tagSaving = ref(false)
+const exportLoading = ref(false)
+const exportCreating = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
@@ -941,6 +1045,8 @@ const materials = ref([])
 const searchResults = ref([])
 const knowledgeItems = ref([])
 const courseTags = ref([])
+const exportTemplates = ref([])
+const exportRecords = ref([])
 const selectedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
@@ -957,7 +1063,8 @@ const pageSections = [
   { id: 'materials', label: 'materials.', title: '课程资料' },
   { id: 'search', label: 'search.', title: '课程检索' },
   { id: 'knowledge', label: 'knowledge.', title: '知识条目' },
-  { id: 'exam', label: 'exam.', title: 'Exam Mapping' }
+  { id: 'exam', label: 'exam.', title: 'Exam Mapping' },
+  { id: 'export', label: 'export.', title: 'Agent 导出' }
 ]
 
 const materialTypeOptions = [
@@ -1048,6 +1155,15 @@ const knowledgeForm = reactive({
   replaceExisting: false
 })
 
+const exportForm = reactive({
+  exportName: '',
+  templateId: null,
+  chapterIds: [],
+  materialTypes: [],
+  onlyKeyMaterials: false,
+  includeExamStats: true
+})
+
 onMounted(() => {
   const savedUser = localStorage.getItem('ai4note-user')
   if (savedUser) {
@@ -1122,13 +1238,72 @@ async function selectCourse(course) {
     ])
     chapters.value = chapterData
     materials.value = materialData
-    await Promise.all([loadKnowledgeItems(), loadCourseTags()])
+    resetExportForm()
+    await Promise.all([loadKnowledgeItems(), loadCourseTags(), loadExportData()])
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     chapterLoading.value = false
     materialLoading.value = false
   }
+}
+
+async function loadExportData() {
+  if (!selectedCourse.value || !currentUser.value) return
+  exportLoading.value = true
+  try {
+    const [templates, records] = await Promise.all([
+      listExportTemplates(),
+      listExportRecords(currentUser.value.id, selectedCourse.value.id)
+    ])
+    exportTemplates.value = templates
+    exportRecords.value = records
+    if (!exportForm.templateId && templates.length > 0) {
+      exportForm.templateId = templates[0].id
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+async function runExport() {
+  if (!selectedCourse.value) return
+  if (!exportForm.exportName.trim()) {
+    ElMessage.warning('请输入导出名称')
+    return
+  }
+  exportCreating.value = true
+  try {
+    const record = await createExport({
+      userId: currentUser.value.id,
+      courseId: selectedCourse.value.id,
+      templateId: exportForm.templateId,
+      exportName: exportForm.exportName.trim(),
+      exportFormat: 'ZIP',
+      chapterIds: exportForm.chapterIds,
+      materialTypes: exportForm.materialTypes,
+      onlyKeyMaterials: exportForm.onlyKeyMaterials,
+      includeExamStats: exportForm.includeExamStats
+    })
+    exportRecords.value.unshift(record)
+    ElMessage.success('知识包已生成')
+    downloadExport(record)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportCreating.value = false
+  }
+}
+
+function downloadExport(record) {
+  window.open(exportDownloadUrl(record.id, currentUser.value.id), '_blank')
+}
+
+function formatExportTime(value) {
+  if (!value) return '刚刚'
+  return new Date(value).toLocaleString()
 }
 
 async function loadKnowledgeItems() {
@@ -1251,6 +1426,17 @@ function resetSearch() {
   searchForm.isKey = false
   searchResults.value = []
   searchHasRun.value = false
+}
+
+function resetExportForm() {
+  exportForm.exportName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 知识包`
+    : ''
+  exportForm.templateId = exportTemplates.value[0]?.id || null
+  exportForm.chapterIds = []
+  exportForm.materialTypes = []
+  exportForm.onlyKeyMaterials = false
+  exportForm.includeExamStats = true
 }
 
 function materialTypeLabel(type) {
@@ -3346,6 +3532,234 @@ button {
   font-size: 12px;
 }
 
+.export-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  background: #f5f3ef;
+}
+
+.export-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.export-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.export-heading h2 span {
+  color: #14cbea;
+}
+
+.export-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.export-panel {
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #14cbea;
+}
+
+.export-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.export-field {
+  min-width: 0;
+}
+
+.export-field > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+:deep(.export-field .el-select),
+:deep(.export-field .el-input) {
+  width: 100%;
+}
+
+:deep(.export-field .el-select__wrapper),
+:deep(.export-field .el-input__wrapper) {
+  min-height: 52px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.export-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #111;
+}
+
+.export-options label {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.export-options button {
+  min-height: 48px;
+  min-width: 170px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #14cbea;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.export-options button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.export-records {
+  margin-top: 56px;
+}
+
+.export-record-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #111;
+}
+
+.export-record-heading strong,
+.export-record-heading span {
+  display: block;
+}
+
+.export-record-heading strong {
+  font-size: 40px;
+  letter-spacing: -0.06em;
+}
+
+.export-record-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.export-record-heading button,
+.export-record-card button {
+  min-height: 42px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.export-record-grid {
+  min-height: 220px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.export-record-card {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #111;
+}
+
+.export-record-card span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.export-record-card h3 {
+  margin: 14px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-record-card p {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.export-record-card button {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  background: #14cbea;
+}
+
+.export-empty {
+  grid-column: 1 / -1;
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.export-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.export-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
 .no-course {
   position: relative;
   min-height: calc(100vh - 86px);
@@ -4017,7 +4431,8 @@ button {
 
   .course-hero,
   .chapter-section,
-  .material-section {
+  .material-section,
+  .export-section {
     padding-left: 22px;
     padding-right: 22px;
   }
@@ -4058,7 +4473,8 @@ button {
   .section-intro,
   .material-title-row,
   .search-heading,
-  .knowledge-heading {
+  .knowledge-heading,
+  .export-heading {
     display: block;
   }
 
@@ -4088,10 +4504,16 @@ button {
     margin-top: 24px;
   }
 
+  .export-heading > p {
+    margin-top: 24px;
+  }
+
   .search-input-row,
   .search-filters,
   .knowledge-generator-main,
-  .knowledge-tags-panel {
+  .knowledge-tags-panel,
+  .export-form-grid,
+  .export-record-grid {
     grid-template-columns: 1fr;
   }
 
@@ -4107,6 +4529,13 @@ button {
 
   .knowledge-grid {
     grid-template-columns: 1fr;
+  }
+
+  .export-options,
+  .export-record-heading,
+  .export-record-card {
+    display: grid;
+    justify-items: stretch;
   }
 
   .knowledge-generator > p {

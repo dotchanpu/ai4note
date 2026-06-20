@@ -1034,13 +1034,15 @@ CANCELED
 
 ### 15.1 查询导出模板
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/export-templates`
 
+返回系统可用的 Agent 导出模板列表，字段包括模板名称、目标 Agent、模板格式和模板说明。
+
 ### 15.2 导出课程知识包
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/exports`
 
@@ -1056,12 +1058,11 @@ CANCELED
   "chapterIds": [1, 2, 3],
   "materialTypes": ["SLIDE", "EXAM", "NOTE"],
   "onlyKeyMaterials": true,
-  "includePrerequisites": true,
-  "includeTeacherProfile": true,
-  "includeExamStats": true,
-  "knowledgeGapReportId": 5
+  "includeExamStats": true
 }
 ```
+
+当前支持 `ZIP` 格式。导出范围支持按章节、资料类型、重点资料筛选；可选择是否包含高频考点统计。
 
 导出包可包含：
 
@@ -1077,26 +1078,34 @@ prompts/
 source/
 ```
 
+成功后会在 `storage/exports/` 下生成 ZIP 文件，并写入 `export_record`。
+
 ### 15.3 查询导出记录
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/exports`
 
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只查询该课程导出记录 |
+
 ### 15.4 下载导出知识包
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/exports/{exportId}/download`
+
+查询参数：`userId`。后端会校验导出记录归属，并限制文件路径必须位于配置的存储根目录下。
 
 ## 16. 接口实现顺序建议
 
 后续开发建议按以下顺序实现：
 
-1. 标签与知识条目维护
-2. 课程前置关系
-3. 真题题目抽取与知识点映射
-4. 用户掌握状态与知识缺口检测
-5. AI 服务配置与教师画像分析
-6. 个性化复习生成
-7. Agent 知识包导出
+1. 课程前置关系
+2. 用户掌握状态与知识缺口检测
+3. AI 服务配置与教师画像分析
+4. 个性化复习生成
