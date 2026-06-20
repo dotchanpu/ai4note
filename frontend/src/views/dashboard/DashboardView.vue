@@ -385,6 +385,14 @@
                       <button
                         v-if="material.parsedChunkCount > 0"
                         type="button"
+                        :disabled="isSummaryGenerating(material.id)"
+                        @click="runMaterialSummary(material)"
+                      >
+                        {{ isSummaryGenerating(material.id) ? '摘要中…' : material.summary ? '重新摘要' : '生成摘要' }}
+                      </button>
+                      <button
+                        v-if="material.parsedChunkCount > 0"
+                        type="button"
                         @click="showParsedText(material)"
                       >
                         查看文本 ↗
@@ -1883,6 +1891,7 @@ import {
 } from '../../api/course'
 import {
   deleteMaterial,
+  generateMaterialSummary,
   listMaterials,
   listTextChunks,
   parsePdf,
@@ -1967,6 +1976,7 @@ const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
 const parsingMaterialId = ref(null)
+const summaryGeneratingIds = ref([])
 const textChunkLoading = ref(false)
 const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
@@ -3164,6 +3174,7 @@ function aiTaskTypeLabel(type) {
   if (type === 'MOCK_EXAM') return '模拟题生成'
   if (type === 'PACKAGE_SUMMARY') return '知识包摘要'
   if (type === 'KNOWLEDGE_EXTRACTION') return '资料知识整理'
+  if (type === 'MATERIAL_SUMMARY') return '资料摘要生成'
   return type || '未知任务'
 }
 
@@ -3337,6 +3348,32 @@ async function runPdfParse(material) {
     ElMessage.error(error.message)
   } finally {
     parsingMaterialId.value = null
+  }
+}
+
+function isSummaryGenerating(materialId) {
+  return summaryGeneratingIds.value.includes(materialId)
+}
+
+async function runMaterialSummary(material) {
+  if (!material.parsedChunkCount) {
+    ElMessage.warning('请先解析资料文本')
+    return
+  }
+  summaryGeneratingIds.value.push(material.id)
+  try {
+    const updated = await generateMaterialSummary(
+      material.id,
+      currentUser.value.id,
+      { model: 'deepseek-v4-flash' }
+    )
+    replaceItem(materials.value, updated)
+    await loadAiGenerationTasks()
+    ElMessage.success('资料摘要已更新')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    summaryGeneratingIds.value = summaryGeneratingIds.value.filter(id => id !== material.id)
   }
 }
 
