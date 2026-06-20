@@ -608,7 +608,34 @@ OTHER
 GET /api/materials/{materialId}/tags?userId={userId}
 ```
 
-### 9.3 查询课程知识条目
+### 9.3 AI 提取资料关键词预览
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/{materialId}/tags/ai-preview`
+
+查询参数：`userId`。
+
+请求体：
+
+```json
+{
+  "model": "deepseek-v4-flash"
+}
+```
+
+该接口要求资料已经完成文本解析。后端会将带页码的解析正文交给 DeepSeek，返回 5 至 12 个候选关键词标签，但不会直接写入 `material_tag`。前端会先展示候选标签，用户确认后再调用 `PUT /api/materials/{materialId}/tags` 写入资料标签。生成过程会写入 `ai_generation_task`，任务类型为 `MATERIAL_TAG_EXTRACTION`。
+
+响应示例：
+
+```json
+{
+  "materialId": 10,
+  "tags": ["词法分析", "有限自动机", "正则表达式"]
+}
+```
+
+### 9.4 查询课程知识条目
 
 - 状态：已实现
 - 方法：`GET`
@@ -623,7 +650,7 @@ GET /api/materials/{materialId}/tags?userId={userId}
 | `chapterId` | 否 | 按章节筛选 |
 | `itemType` | 否 | 按知识类型筛选 |
 
-### 9.4 创建知识条目
+### 9.5 创建知识条目
 
 - 状态：已实现
 - 方法：`POST`
@@ -661,7 +688,7 @@ PUT    /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
 DELETE /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
 ```
 
-### 9.5 使用 AI 整理资料知识
+### 9.6 使用 AI 整理资料知识
 
 - 状态：已实现
 - 方法：`POST`
@@ -1250,6 +1277,7 @@ MOCK_EXAM
 PACKAGE_SUMMARY
 KNOWLEDGE_EXTRACTION
 MATERIAL_SUMMARY
+MATERIAL_TAG_EXTRACTION
 ```
 
 任务状态：

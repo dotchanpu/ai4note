@@ -197,6 +197,7 @@ GET  /api/ai/status
 POST /api/ai/chat
 GET  /api/ai-generation-tasks?userId={userId}&courseId={courseId}
 PUT  /api/ai-generation-tasks/{taskId}/status
+POST /api/materials/{materialId}/tags/ai-preview?userId={userId}
 GET  /api/courses/{courseId}/knowledge-items?userId={userId}
 POST /api/materials/{materialId}/knowledge-items/ai-generate?userId={userId}
 POST /api/materials/{materialId}/exam-questions/extract?userId={userId}&overwrite={false|true}
