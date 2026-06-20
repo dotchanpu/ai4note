@@ -37,6 +37,13 @@ export function parsePdf(materialId, userId) {
   })
 }
 
+export function generateMaterialSummary(materialId, userId, data = {}) {
+  return request.post(`/materials/${materialId}/summary/ai-generate`, data, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
 export function listTextChunks(materialId, userId) {
   return request.get(`/materials/${materialId}/text-chunks`, {
     params: { userId }

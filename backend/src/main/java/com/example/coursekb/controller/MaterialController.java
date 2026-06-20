@@ -1,8 +1,10 @@
 package com.example.coursekb.controller;
 
 import com.example.coursekb.dto.MaterialUpdateRequest;
+import com.example.coursekb.dto.MaterialSummaryGenerateRequest;
 import com.example.coursekb.service.ContentDeletionService;
 import com.example.coursekb.service.MaterialService;
+import com.example.coursekb.service.MaterialSummaryService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
 import com.example.coursekb.exception.BusinessException;
@@ -25,14 +27,17 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class MaterialController {
     private final MaterialService materialService;
+    private final MaterialSummaryService materialSummaryService;
     private final PdfParseService pdfParseService;
     private final ContentDeletionService contentDeletionService;
 
     public MaterialController(
             MaterialService materialService,
+            MaterialSummaryService materialSummaryService,
             PdfParseService pdfParseService,
             ContentDeletionService contentDeletionService) {
         this.materialService = materialService;
+        this.materialSummaryService = materialSummaryService;
         this.pdfParseService = pdfParseService;
         this.contentDeletionService = contentDeletionService;
     }
@@ -128,6 +133,17 @@ public class MaterialController {
             @PathVariable Long materialId,
             @RequestParam Long userId) {
         return pdfParseService.parse(materialId, userId);
+    }
+
+    @PostMapping("/materials/{materialId}/summary/ai-generate")
+    public MaterialVO generateSummary(
+            @PathVariable Long materialId,
+            @RequestParam Long userId,
+            @RequestBody(required = false) MaterialSummaryGenerateRequest request) {
+        return materialSummaryService.generate(
+                materialId,
+                userId,
+                request == null ? new MaterialSummaryGenerateRequest() : request);
     }
 
     @GetMapping("/materials/{materialId}/text-chunks")

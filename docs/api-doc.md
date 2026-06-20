@@ -538,7 +538,29 @@ OTHER
 }
 ```
 
-### 8.8 查询解析文本
+### 8.8 自动生成资料摘要
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/{materialId}/summary/ai-generate`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+
+请求体：
+
+```json
+{
+  "model": "deepseek-v4-flash"
+}
+```
+
+该接口要求资料已经完成文本解析。后端会将带页码的解析正文交给 DeepSeek 生成中文摘要，保存到 `material.summary` 并返回更新后的资料信息。重复调用会覆盖旧摘要，用于手动重新生成。生成过程会写入 `ai_generation_task`，任务类型为 `MATERIAL_SUMMARY`。
+
+### 8.9 查询解析文本
 
 - 状态：已实现
 - 方法：`GET`
@@ -1227,6 +1249,7 @@ REVIEW_GENERATION
 MOCK_EXAM
 PACKAGE_SUMMARY
 KNOWLEDGE_EXTRACTION
+MATERIAL_SUMMARY
 ```
 
 任务状态：
