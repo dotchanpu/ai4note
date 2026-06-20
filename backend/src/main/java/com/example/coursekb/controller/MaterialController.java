@@ -4,11 +4,13 @@ import com.example.coursekb.dto.MaterialUpdateRequest;
 import com.example.coursekb.dto.MaterialSummaryGenerateRequest;
 import com.example.coursekb.service.ContentDeletionService;
 import com.example.coursekb.service.MaterialService;
+import com.example.coursekb.service.MaterialSimilarityService;
 import com.example.coursekb.service.MaterialSummaryService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.vo.MaterialVO;
+import com.example.coursekb.vo.MaterialSimilarityVO;
 import com.example.coursekb.vo.PdfParseResultVO;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,16 +29,19 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class MaterialController {
     private final MaterialService materialService;
+    private final MaterialSimilarityService materialSimilarityService;
     private final MaterialSummaryService materialSummaryService;
     private final PdfParseService pdfParseService;
     private final ContentDeletionService contentDeletionService;
 
     public MaterialController(
             MaterialService materialService,
+            MaterialSimilarityService materialSimilarityService,
             MaterialSummaryService materialSummaryService,
             PdfParseService pdfParseService,
             ContentDeletionService contentDeletionService) {
         this.materialService = materialService;
+        this.materialSimilarityService = materialSimilarityService;
         this.materialSummaryService = materialSummaryService;
         this.pdfParseService = pdfParseService;
         this.contentDeletionService = contentDeletionService;
@@ -54,6 +59,13 @@ public class MaterialController {
             @PathVariable Long materialId,
             @RequestParam Long userId) {
         return materialService.detail(materialId, userId);
+    }
+
+    @GetMapping("/materials/{materialId}/similar")
+    public List<MaterialSimilarityVO> similarMaterials(
+            @PathVariable Long materialId,
+            @RequestParam Long userId) {
+        return materialSimilarityService.detect(materialId, userId);
     }
 
     @PostMapping("/materials")

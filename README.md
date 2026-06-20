@@ -190,6 +190,7 @@ PUT  /api/materials/{materialId}?userId={userId}
 DELETE /api/materials/{materialId}?userId={userId}
 POST /api/materials/{materialId}/parse?userId={userId}
 POST /api/materials/{materialId}/summary/ai-generate?userId={userId}
+GET  /api/materials/{materialId}/similar?userId={userId}
 GET  /api/materials/{materialId}/text-chunks?userId={userId}
 GET  /api/search?userId={userId}&courseId={courseId}&keyword={keyword}
 GET  /api/search/records?userId={userId}&courseId={courseId}
