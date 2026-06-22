@@ -117,6 +117,11 @@
           </div>
         </div>
 
+        <button type="button" class="course-map-button" @click="router.push('/course-map')">
+          <span>课程关系图</span>
+          <strong>↗</strong>
+        </button>
+
         <button type="button" class="new-course-button" @click="openCourseCreator">
           <span>新建课程</span>
           <strong>＋</strong>
@@ -2072,6 +2077,26 @@ button {
   color: #777;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.course-map-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: auto;
+  margin-bottom: 10px;
+  padding: 15px 18px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #14cbea;
+  color: #111;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.course-map-button strong {
+  font-size: 18px;
 }
 
 .new-course-button {
