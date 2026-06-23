@@ -2,6 +2,7 @@ package com.example.coursekb.controller;
 
 import com.example.coursekb.service.SearchService;
 import com.example.coursekb.vo.MaterialSearchResultVO;
+import com.example.coursekb.vo.SearchRecordVO;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,5 +33,12 @@ public class SearchController {
                 chapterId,
                 materialType,
                 isKey);
+    }
+
+    @GetMapping("/records")
+    public List<SearchRecordVO> listRecords(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long courseId) {
+        return searchService.listRecords(userId, courseId);
     }
 }

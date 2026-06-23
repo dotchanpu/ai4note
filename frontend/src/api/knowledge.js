@@ -14,6 +14,13 @@ export function replaceMaterialTags(materialId, userId, tagNames) {
   })
 }
 
+export function previewMaterialTags(materialId, userId, data = {}) {
+  return request.post(`/materials/${materialId}/tags/ai-preview`, data, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
 export function listKnowledgeItems(courseId, userId, filters = {}) {
   return request.get(`/courses/${courseId}/knowledge-items`, {
     params: { userId, ...filters }
@@ -24,6 +31,16 @@ export function deleteKnowledgeItem(courseId, itemId, userId) {
   return request.delete(`/courses/${courseId}/knowledge-items/${itemId}`, {
     params: { userId }
   })
+}
+
+export function getKnowledgeMastery(knowledgeItemId, userId) {
+  return request.get(`/knowledge-items/${knowledgeItemId}/mastery`, {
+    params: { userId }
+  })
+}
+
+export function updateKnowledgeMastery(knowledgeItemId, data) {
+  return request.put(`/knowledge-items/${knowledgeItemId}/mastery`, data)
 }
 
 export function generateKnowledgeItems(materialId, userId, data) {

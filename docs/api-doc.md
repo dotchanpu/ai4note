@@ -170,7 +170,46 @@ GET /api/courses?userId=1
 |---|---|---|
 | `userId` | 是 | 当前用户 ID，用于检查课程归属 |
 
-### 5.3 创建课程知识库
+### 5.3 查询课程资料统计
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/stats`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID，用于检查课程归属 |
+
+响应示例：
+
+```json
+{
+  "courseId": 1,
+  "courseName": "数据结构与算法",
+  "materialCount": 12,
+  "parsedMaterialCount": 10,
+  "knowledgeItemCount": 86,
+  "examQuestionCount": 45,
+  "examMappingCount": 58,
+  "exportCount": 4,
+  "materialTypeStats": [
+    {
+      "materialType": "SLIDE",
+      "count": 6
+    },
+    {
+      "materialType": "EXAM",
+      "count": 3
+    }
+  ]
+}
+```
+
+统计口径：资料数量和类型分布来自 `material`；已解析数量按存在解析文本块的资料数计算；知识条目、真题、映射和导出次数分别来自 `knowledge_item`、`exam_question`、`exam_question_knowledge_map` 和 `export_record`。
+
+### 5.4 创建课程知识库
 
 - 状态：已实现
 - 方法：`POST`
@@ -196,7 +235,7 @@ GET /api/courses?userId=1
 | `semester` | 否 | 所属学期 |
 | `description` | 否 | 课程简介 |
 
-### 5.4 修改课程
+### 5.5 修改课程
 
 - 状态：已实现
 - 方法：`PUT`
@@ -204,7 +243,7 @@ GET /api/courses?userId=1
 
 请求体与创建课程相同，`userId` 用于校验课程归属。
 
-### 5.5 删除课程
+### 5.6 删除课程
 
 - 状态：已实现
 - 方法：`DELETE`
@@ -312,17 +351,19 @@ DELETE /api/courses/1?userId=1
 
 ### 7.1 查询课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/relations`
 
-响应内容包括课程的前置课、关联课和后续课。
+查询参数：`userId`。响应内容包括课程的前置课、关联课和后续课，并返回关联课程名称、编号、学期和说明。
 
 ### 7.2 创建课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/relations`
+
+查询参数：`userId`。
 
 请求体：
 
@@ -335,6 +376,8 @@ DELETE /api/courses/1?userId=1
 }
 ```
 
+后端会校验当前课程和关联课程都属于当前用户，禁止课程关联自身，禁止同一课程重复关联同一门课。
+
 `relationType` 可选值：
 
 | 值 | 含义 |
@@ -345,9 +388,11 @@ DELETE /api/courses/1?userId=1
 
 ### 7.3 删除课程关系
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`DELETE`
 - 路径：`/api/course-relations/{relationId}`
+
+查询参数：`userId`。只有课程归属用户可以删除该关系。
 
 ## 8. 课程资料
 
@@ -391,7 +436,30 @@ CODE
 OTHER
 ```
 
-### 8.3 查询资料详情
+### 8.3 批量上传课程资料
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/batch`
+- 类型：`multipart/form-data`
+
+表单字段：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `files` | 是 | 原始资料文件，可重复提交多个 |
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 是 | 所属课程 |
+| `titles` | 是 | 每个文件对应的资料标题，顺序与 `files` 一致 |
+| `materialTypes` | 是 | 每个文件对应的资料类型，顺序与 `files` 一致 |
+| `chapterIds` | 否 | 每个文件对应的章节 ID，空字符串表示不关联章节 |
+| `years` | 否 | 每个文件对应的资料年份，空字符串表示不设置 |
+| `isKeys` | 否 | 每个文件对应的重点标记，空字符串或 `false` 表示非重点 |
+| `summaries` | 否 | 每个文件对应的资料摘要，空字符串表示不设置 |
+
+后端会按 `files` 顺序连续上传，每个文件复用单文件上传的课程归属、章节归属、文件类型和必填字段校验。响应为成功创建的资料数组，顺序与上传文件一致。
+
+### 8.4 查询资料详情
 
 - 状态：已实现
 - 方法：`GET`
@@ -403,7 +471,7 @@ OTHER
 |---|---|---|
 | `userId` | 是 | 当前用户 ID，用于检查资料所属课程 |
 
-### 8.4 修改资料信息
+### 8.5 修改资料信息
 
 - 状态：已实现
 - 方法：`PUT`
@@ -417,7 +485,7 @@ OTHER
 
 可修改资料标题、类型、所属章节、年份、重点标记和摘要。该接口不替换原始文件。
 
-### 8.5 删除资料
+### 8.6 删除资料
 
 - 状态：已实现
 - 方法：`DELETE`
@@ -433,7 +501,7 @@ OTHER
 
 成功响应：HTTP `200`，响应体为空。
 
-### 8.6 解析资料文本
+### 8.7 解析资料文本
 
 - 状态：已实现（PDF）
 - 方法：`POST`
@@ -470,7 +538,60 @@ OTHER
 }
 ```
 
-### 8.7 查询解析文本
+### 8.8 自动生成资料摘要
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/{materialId}/summary/ai-generate`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+
+请求体：
+
+```json
+{
+  "model": "deepseek-v4-flash"
+}
+```
+
+该接口要求资料已经完成文本解析。后端会将带页码的解析正文交给 DeepSeek 生成中文摘要，保存到 `material.summary` 并返回更新后的资料信息。重复调用会覆盖旧摘要，用于手动重新生成。生成过程会写入 `ai_generation_task`，任务类型为 `MATERIAL_SUMMARY`。
+
+### 8.9 检测相似资料
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/materials/{materialId}/similar`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+
+后端会在当前课程内排除资料自身，基于资料标题、摘要、标签和已解析正文计算相似度，返回最多 5 条可能重复的资料。前端会在上传资料后立即检测标题、摘要和标签相似度，在 PDF 解析完成后再次结合解析正文提示可能重复资料。
+
+响应示例：
+
+```json
+[
+  {
+    "material": {
+      "id": 11,
+      "title": "Chapter 1 Courseware",
+      "materialType": "SLIDE",
+      "summary": "编译原理课程第一章课件"
+    },
+    "score": 0.76,
+    "reasons": ["标题相似", "解析正文相似"]
+  }
+]
+```
+
+### 8.10 查询解析文本
 
 - 状态：已实现
 - 方法：`GET`
@@ -518,7 +639,34 @@ OTHER
 GET /api/materials/{materialId}/tags?userId={userId}
 ```
 
-### 9.3 查询课程知识条目
+### 9.3 AI 提取资料关键词预览
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/materials/{materialId}/tags/ai-preview`
+
+查询参数：`userId`。
+
+请求体：
+
+```json
+{
+  "model": "deepseek-v4-flash"
+}
+```
+
+该接口要求资料已经完成文本解析。后端会将带页码的解析正文交给 DeepSeek，返回 5 至 12 个候选关键词标签，但不会直接写入 `material_tag`。前端会先展示候选标签，用户确认后再调用 `PUT /api/materials/{materialId}/tags` 写入资料标签。生成过程会写入 `ai_generation_task`，任务类型为 `MATERIAL_TAG_EXTRACTION`。
+
+响应示例：
+
+```json
+{
+  "materialId": 10,
+  "tags": ["词法分析", "有限自动机", "正则表达式"]
+}
+```
+
+### 9.4 查询课程知识条目
 
 - 状态：已实现
 - 方法：`GET`
@@ -533,7 +681,7 @@ GET /api/materials/{materialId}/tags?userId={userId}
 | `chapterId` | 否 | 按章节筛选 |
 | `itemType` | 否 | 按知识类型筛选 |
 
-### 9.4 创建知识条目
+### 9.5 创建知识条目
 
 - 状态：已实现
 - 方法：`POST`
@@ -571,7 +719,7 @@ PUT    /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
 DELETE /api/courses/{courseId}/knowledge-items/{itemId}?userId={userId}
 ```
 
-### 9.5 使用 AI 整理资料知识
+### 9.6 使用 AI 整理资料知识
 
 - 状态：已实现
 - 方法：`POST`
@@ -686,34 +834,114 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 | `KNOWLEDGE_TITLE` | 知识条目标题命中 |
 | `KNOWLEDGE_CONTENT` | 知识条目内容命中 |
 
+### 10.2 查询搜索记录
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/search/records`
+
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只返回该课程搜索记录，并校验课程归属 |
+
+按搜索时间倒序返回最近 100 条记录。前端课程搜索页会按当前课程展示历史关键词，点击历史记录可复用关键词重新搜索。
+
+响应示例：
+
+```json
+[
+  {
+    "id": 12,
+    "userId": 1,
+    "courseId": 4,
+    "courseName": "编译原理",
+    "keyword": "语义分析",
+    "searchType": "UNIFIED_KNOWLEDGE",
+    "resultCount": 8,
+    "searchTime": "2026-06-21T01:30:00"
+  }
+]
+```
+
 ## 11. 真题知识点映射
 
 ### 11.1 从真题资料中抽取题目
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/materials/{materialId}/exam-questions/extract`
 
-系统将真题资料拆分为独立题目，并提取题号、题型、题干、答案、分值和年份等信息。
+请求参数：
+
+- `userId`：必填
+- `overwrite`：可选，默认 `false`
+
+当前行为说明：
+
+- 当前仅支持 `EXAM` 类型且文件类型为 `PDF` 的资料
+- 抽题依赖已有解析文本；若资料尚未解析，会返回“需先解析后再抽题”的业务错误
+- 支持 `overwrite=true` 覆盖重写
+- 覆盖重写会先清空该资料已有的真题及其知识点映射，再写入本次抽取结果
+- 抽题完成后，会自动尝试映射到当前课程下已经存在的知识条目；若课程尚无可用知识条目，则不会生成自动映射结果
+
+抽取字段至少包括题号、题型、题干、答案、分值、年份和来源页码。其中题型会在入库阶段统一清洗为中文标准值。
 
 ### 11.2 查询课程真题
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-questions`
 
+查询参数：
+
+- `userId`：必填
+- `page`：可选，默认 `1`
+- `size`：可选，默认 `12`
+- `year`：可选
+- `chapterId`：可选
+- `questionType`：可选
+- `materialId`：可选
+
+接口返回分页对象，而不是裸数组：
+
+```json
+{
+  "items": [
+    {
+      "id": 101,
+      "materialId": 12,
+      "questionType": "简答题",
+      "questionText": "说明事务的 ACID 特性",
+      "sourcePage": 3,
+      "mappings": []
+    }
+  ],
+  "total": 147,
+  "page": 1,
+  "size": 12,
+  "totalPages": 13
+}
+```
+
+列表按卷面顺序优先返回，当前排序口径为：`examYear DESC -> materialId DESC -> sourcePage ASC -> normalizedQuestionNo ASC -> id ASC`。
+
 ### 11.3 建立题目与知识点映射
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/exam-questions/{questionId}/knowledge-map`
+
+该接口当前主要用于人工修正或补充题目与知识点映射，不再作为主映射入口；主流程会在抽题完成后自动尝试进行 AI 映射。
 
 请求体示例：
 
 ```json
 {
   "knowledgeItemId": 20,
-  "matchSource": "AI",
+  "matchSource": "MANUAL",
   "confidenceScore": 92.5,
   "reason": "题目要求实现二叉树中序遍历"
 }
@@ -721,17 +949,33 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 
 ### 11.4 查询高频考点统计
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-knowledge-stats`
 
-可按年份、章节和题型统计知识点出现频率。
+该接口会基于当前真题映射结果做实时聚合统计，可按年份、章节和题型筛选知识点命中次数、累计分值和最近出现年份。
+
+### 11.5 查询高频考点趋势
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/exam-knowledge-trends`
+
+查询参数：`userId`，可选 `chapterId`、`questionType`。该接口基于带年份的真题和知识点映射，按知识点聚合历年命中次数与分值，返回每个高频考点的总命中次数、总分和年度趋势明细，用于观察考点热度变化。
 
 ## 12. 用户掌握状态与知识缺口
 
-### 12.1 更新知识点掌握状态
+### 12.1 查询知识点掌握状态
 
-- 状态：规划中
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/knowledge-items/{knowledgeItemId}/mastery`
+
+查询参数：`userId`。如果用户尚未维护该知识点掌握状态，返回默认状态 `UNKNOWN`。
+
+### 12.2 更新知识点掌握状态
+
+- 状态：已实现
 - 方法：`PUT`
 - 路径：`/api/knowledge-items/{knowledgeItemId}/mastery`
 
@@ -742,9 +986,12 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
   "userId": 1,
   "masteryStatus": "WEAK",
   "masteryScore": 45,
-  "note": "指针操作仍不熟练"
+  "note": "指针操作仍不熟练",
+  "lastReviewTime": "2026-06-20T21:30:00"
 }
 ```
+
+`lastReviewTime` 可省略；省略时后端会使用当前时间。知识条目列表接口也会返回当前用户的 `masteryStatus`、`masteryScore`、`masteryNote`、`lastReviewTime` 和 `masteryUpdateTime`。
 
 `masteryStatus` 可选值：
 
@@ -756,9 +1003,9 @@ WEAK
 NEED_REVIEW
 ```
 
-### 12.2 生成知识缺口报告
+### 12.3 生成知识缺口报告
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/knowledge-gap-reports`
 
@@ -774,17 +1021,52 @@ NEED_REVIEW
 
 系统综合当前课程知识点、前置课程知识点、真题高频考点和用户掌握状态生成报告。
 
-### 12.3 查询知识缺口报告
+生成规则：
 
-- 状态：规划中
+- 当前课程知识点始终参与检测。
+- `includePrerequisites` 为 `true` 时，会纳入当前课程的前置课程知识点。
+- 根据掌握状态、掌握分数、真题命中次数和是否来自前置课程计算 `severityLevel`。
+- 明细 `gapType` 包括 `WEAK_MASTERY`、`NEED_REVIEW`、`HIGH_FREQUENCY`、`PREREQUISITE_GAP` 和 `UNASSESSED`。
+
+### 12.4 查询前置课程知识缺口提示
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/prerequisite-gap-hints`
+
+查询参数：`userId`。后端只读取当前课程的 `PREREQUISITE` 关系，返回前置课程知识点中仍需要补齐的提示列表，不创建 `knowledge_gap_report` 记录。返回字段与知识缺口明细一致，包括知识点标题、来源前置课程、关系类型、掌握状态、真题命中次数、严重程度、原因和建议。
+
+### 12.5 查询课程知识缺口报告列表
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/courses/{courseId}/knowledge-gap-reports`
+
+查询参数：`userId`。按创建时间倒序返回该课程的历史知识缺口报告。
+
+### 12.6 查询知识缺口报告
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/knowledge-gap-reports/{reportId}`
 
-### 12.4 查询知识缺口明细
+查询参数：`userId`。后端会校验报告归属和课程归属。
 
-- 状态：规划中
+### 12.7 查询知识缺口明细
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/knowledge-gap-reports/{reportId}/items`
+
+查询参数：`userId`。返回知识点标题、来源课程、前置关系、掌握状态、掌握分数、真题命中次数、严重程度、原因和建议。
+
+### 12.8 生成知识缺口补学路径
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/knowledge-gap-reports/{reportId}/remediation-path`
+
+查询参数：`userId`。后端基于已保存的知识缺口报告明细生成阶段化补学路径，不新增数据库记录。路径会按“先补前置基础 → 攻克高优先级缺口 → 专项真题训练 → 复盘巩固”的顺序组织缺口，并返回每个阶段的目标、知识点清单、来源课程、优先级和补学建议。
 
 缺口类型：
 
@@ -799,13 +1081,15 @@ UNREVIEWED
 
 ### 13.1 查询课程教师画像
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/teacher-profiles`
 
+查询参数：`userId`。按最近更新时间倒序返回课程教师画像，字段包括教师名称、分析状态、置信度、出题风格、题型偏好、评分偏好、重点章节、规避内容、依据摘要和最近分析时间。
+
 ### 13.2 发起教师画像 AI 分析
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/courses/{courseId}/teacher-profiles/analyze`
 
@@ -816,27 +1100,47 @@ UNREVIEWED
   "userId": 1,
   "teacherName": "张老师",
   "materialIds": [11, 12, 13],
-  "providerConfigId": 1
+  "providerConfigId": 1,
+  "model": "deepseek-v4-flash"
 }
 ```
 
 系统综合课件、往年真题、实验要求和评分标准，分析教师的出题风格、常见题型、评分偏好和重点章节。
 
+当前实现使用 DeepSeek 默认配置调用结构化 JSON 分析；`providerConfigId` 字段预留给多供应商 AI 配置模块。分析成功后写入 `teacher_profile`，并保存 `teacher_profile_evidence` 证据来源；失败时保留 `FAILED` 状态记录。
+
 ### 13.3 查询教师画像证据
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/teacher-profiles/{profileId}/evidence`
 
-证据响应应包含资料、来源页码、证据摘要和置信度。
+查询参数：`userId`。证据响应包含资料 ID、资料标题、资料类型、证据类型、来源页码、证据摘要和置信度。后端会校验教师画像归属和课程归属。
 
 ### 13.4 人工确认或修正教师画像
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`PUT`
 - 路径：`/api/teacher-profiles/{profileId}`
 
-确认后 `analysisStatus` 可更新为 `MANUAL_REVIEWED`。
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherName": "张老师",
+  "confidenceScore": 85,
+  "examStyle": "重视基础概念与综合应用",
+  "questionPreference": "简答题和设计题占比较高",
+  "gradingPreference": "过程分明显，强调关键步骤",
+  "focusTopics": "图、排序、查找",
+  "avoidTopics": "低频扩展阅读内容",
+  "sourceSummary": "基于近三年真题和课件重点修正",
+  "analysisStatus": "MANUAL_REVIEWED"
+}
+```
+
+确认后 `analysisStatus` 可更新为 `MANUAL_REVIEWED`。后端会校验画像归属，置信度会限制在 0 到 100。
 
 教师画像分析状态：
 
@@ -847,6 +1151,33 @@ SUCCESS
 FAILED
 MANUAL_REVIEWED
 ```
+
+### 13.5 重算教师画像置信度
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/teacher-profiles/{profileId}/confidence-score`
+
+查询参数：`userId`。后端会校验画像归属，并根据画像字段完整度、证据数量、证据平均置信度、证据资料来源多样性和分析状态重新计算 `confidenceScore`。该接口不重新调用 AI，也不会修改画像正文。
+
+### 13.6 重新分析教师画像
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/teacher-profiles/{profileId}/reanalyze`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "materialIds": [],
+  "model": "deepseek-v4-flash",
+  "providerConfigId": null
+}
+```
+
+后端会复用原教师画像的教师名称，重新读取课程资料和真题上下文调用 DeepSeek。分析期间画像状态更新为 `RUNNING`，成功后覆盖画像正文和证据来源，失败时保留画像记录并写入 `FAILED` 状态。该流程会新增一条 `TEACHER_PROFILE` 类型的 AI 生成任务记录。
 
 ## 14. AI 服务与任务
 
@@ -907,15 +1238,52 @@ MANUAL_REVIEWED
 
 ### 14.3 新建 AI 服务配置
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/ai/providers`
 
-后续可将多供应商配置保存到 `ai_provider_config`。数据库只保存 API Key 的环境变量别名，不保存明文密钥。
+请求体示例：
 
-### 14.4 创建个性化复习配置
+```json
+{
+  "userId": 1,
+  "providerName": "DeepSeek",
+  "baseUrl": "https://api.deepseek.com",
+  "modelName": "deepseek-v4-flash",
+  "apiKeyAlias": "DEEPSEEK_API_KEY",
+  "enabled": true
+}
+```
 
-- 状态：规划中
+数据库只保存 API Key 的环境变量别名，不保存明文密钥。`apiKeyAlias` 必须是环境变量名格式，例如 `DEEPSEEK_API_KEY`。
+
+### 14.4 查询 AI 服务配置
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/ai/providers`
+
+查询参数：`userId`。
+
+### 14.5 修改 AI 服务配置
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/ai/providers/{configId}`
+
+请求体同创建接口。后端会校验配置归属。
+
+### 14.6 删除 AI 服务配置
+
+- 状态：已实现
+- 方法：`DELETE`
+- 路径：`/api/ai/providers/{configId}`
+
+查询参数：`userId`。
+
+### 14.7 创建个性化复习配置
+
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/review-profiles`
 
@@ -935,28 +1303,64 @@ MANUAL_REVIEWED
 }
 ```
 
-### 14.5 创建 AI 生成任务
+字段约束：
 
-- 状态：规划中
-- 方法：`POST`
+- `difficultyLevel`：`EASY`、`MEDIUM`、`MEDIUM_HARD`、`HARD`
+- `outputType`：`REVIEW_NOTE`、`OUTLINE`、`FLASHCARDS`、`MOCK_EXAM`、`CHECKLIST`
+- `teacherProfileId` 可为空；传入时后端会校验教师画像属于当前用户和课程。
+
+### 14.8 查询个性化复习配置
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/review-profiles`
+
+查询参数：`userId`、`courseId`。返回该课程的复习生成配置列表。
+
+### 14.9 修改个性化复习配置
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/review-profiles/{profileId}`
+
+请求体同创建接口。后端会校验配置归属和课程归属。
+
+### 14.10 删除个性化复习配置
+
+- 状态：已实现
+- 方法：`DELETE`
+- 路径：`/api/review-profiles/{profileId}`
+
+查询参数：`userId`。
+
+### 14.11 查询 AI 生成任务记录
+
+- 状态：已实现
+- 方法：`GET`
 - 路径：`/api/ai-generation-tasks`
 
-任务类型建议值：
+查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只返回该课程任务，并校验课程归属 |
+
+当前教师画像分析和资料知识整理流程会自动写入任务记录。后续复习资料生成、模拟题生成等流程可复用同一张任务表。
+
+任务类型：
 
 ```text
-TEACHER_PROFILE_ANALYSIS
-EXAM_KNOWLEDGE_MAPPING
-KNOWLEDGE_GAP_ANALYSIS
-REVIEW_NOTE_GENERATION
-MOCK_EXAM_GENERATION
-KNOWLEDGE_PACKAGE_SUMMARY
+TEACHER_PROFILE
+EXAM_MAPPING
+KNOWLEDGE_GAP
+REVIEW_GENERATION
+MOCK_EXAM
+PACKAGE_SUMMARY
+KNOWLEDGE_EXTRACTION
+MATERIAL_SUMMARY
+MATERIAL_TAG_EXTRACTION
 ```
-
-### 14.6 查询 AI 生成任务
-
-- 状态：规划中
-- 方法：`GET`
-- 路径：`/api/ai-generation-tasks/{taskId}`
 
 任务状态：
 
@@ -971,28 +1375,140 @@ CANCELED
 响应示例：
 
 ```json
+[
+  {
+    "id": 100,
+    "userId": 1,
+    "courseId": 1,
+    "reviewProfileId": null,
+    "teacherProfileId": 8,
+    "providerConfigId": 1,
+    "taskType": "TEACHER_PROFILE",
+    "prompt": "你是课程考试分析助手...",
+    "status": "SUCCESS",
+    "resultPath": "teacher-profile:8",
+    "errorMessage": null,
+    "createTime": "2026-06-18T15:00:00",
+    "finishTime": "2026-06-18T15:01:20"
+  }
+]
+```
+
+### 14.12 更新 AI 生成任务状态
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/ai-generation-tasks/{taskId}/status`
+
+请求体示例：
+
+```json
 {
-  "id": 100,
-  "taskType": "REVIEW_NOTE_GENERATION",
-  "status": "SUCCESS",
-  "resultPath": "storage/ai-results/review/100.md",
-  "errorMessage": null,
-  "createTime": "2026-06-18T15:00:00",
-  "finishTime": "2026-06-18T15:01:20"
+  "userId": 1,
+  "status": "FAILED",
+  "resultPath": null,
+  "errorMessage": "模型返回为空"
 }
 ```
+
+该接口用于后续异步生成流程回写状态。当前同步 AI 流程会由后端服务内部自动标记 `RUNNING`、`SUCCESS` 或 `FAILED`。
+
+### 14.13 基于教师画像生成模拟题
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/courses/{courseId}/mock-exams/generate`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherProfileId": 8,
+  "questionCount": 8,
+  "difficultyLevel": "MEDIUM",
+  "model": "deepseek-v4-flash",
+  "customRequirement": "增加一道综合设计题"
+}
+```
+
+后端会校验课程和教师画像归属，读取课程知识点与真题知识点高频统计，结合教师画像中的出题风格、题型偏好、评分偏好、重点章节和规避内容调用 DeepSeek 生成结构化模拟题。生成过程会写入 `ai_generation_task`，任务类型为 `MOCK_EXAM`；成功后将 Markdown 结果文件保存到 `storage-root/mock-exams/user-{userId}/course-{courseId}/`，并把相对路径写入 `resultPath`。
+
+响应示例：
+
+```json
+{
+  "task": {
+    "id": 120,
+    "userId": 1,
+    "courseId": 1,
+    "reviewProfileId": null,
+    "teacherProfileId": 8,
+    "providerConfigId": null,
+    "taskType": "MOCK_EXAM",
+    "prompt": "You are AI4Note's mock exam generation assistant...",
+    "status": "SUCCESS",
+    "resultPath": "mock-exams/user-1/course-1/mock-exam-20260621103000-task-120.md",
+    "errorMessage": null,
+    "createTime": "2026-06-21T10:29:40",
+    "finishTime": "2026-06-21T10:30:00"
+  },
+  "title": "数据结构模拟题",
+  "resultPath": "mock-exams/user-1/course-1/mock-exam-20260621103000-task-120.md",
+  "content": "# 数据结构模拟题\n\n...",
+  "questionCount": 8
+}
+```
+
+### 14.14 下载模拟题结果文件
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/mock-exams/{taskId}/download`
+
+查询参数：`userId`。仅允许下载当前用户名下、任务类型为 `MOCK_EXAM` 且状态为 `SUCCESS` 的任务结果文件。
+
+### 14.15 按出题风格生成冲刺复习提纲
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/courses/{courseId}/sprint-outlines/generate`
+
+请求体示例：
+
+```json
+{
+  "userId": 1,
+  "teacherProfileId": 8,
+  "days": 7,
+  "model": "deepseek-v4-flash",
+  "customRequirement": "最后两天集中刷综合题"
+}
+```
+
+后端会校验课程和教师画像归属，结合教师画像、课程知识点和真题高频统计调用 DeepSeek 生成结构化冲刺复习提纲。生成过程写入 `ai_generation_task`，任务类型为 `REVIEW_GENERATION`；成功后将 Markdown 结果文件保存到 `storage-root/sprint-outlines/user-{userId}/course-{courseId}/`，并把相对路径写入 `resultPath`。
+
+### 14.16 下载冲刺复习提纲结果文件
+
+- 状态：已实现
+- 方法：`GET`
+- 路径：`/api/sprint-outlines/{taskId}/download`
+
+查询参数：`userId`。仅允许下载当前用户名下、任务类型为 `REVIEW_GENERATION`、结果路径位于 `sprint-outlines/` 且状态为 `SUCCESS` 的任务结果文件。
 
 ## 15. Agent 知识包导出
 
 ### 15.1 查询导出模板
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/export-templates`
 
+返回系统可用的 Agent 导出模板列表，字段包括模板名称、目标 Agent、模板格式和模板说明。
+
 ### 15.2 导出课程知识包
 
-- 状态：规划中
+- 状态：已实现
 - 方法：`POST`
 - 路径：`/api/exports`
 
@@ -1008,12 +1524,59 @@ CANCELED
   "chapterIds": [1, 2, 3],
   "materialTypes": ["SLIDE", "EXAM", "NOTE"],
   "onlyKeyMaterials": true,
-  "includePrerequisites": true,
-  "includeTeacherProfile": true,
   "includeExamStats": true,
-  "knowledgeGapReportId": 5
+  "includePrerequisiteCourses": true,
+  "includeRelatedCourses": false,
+  "includeFollowUpCourses": false
 }
 ```
+
+当前支持 `ZIP` 格式。导出范围支持按章节、资料类型、重点资料筛选；可选择是否包含高频考点统计，以及是否包含前置课程、关联课程、后续课程的重点内容。
+
+### 15.3 预览导出内容
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/exports/preview`
+
+请求体同导出课程知识包接口。该接口不会生成 ZIP，也不会写入 `export_record`；后端会复用实际导出的筛选和关联课程聚合逻辑，返回当前导出范围将包含的课程、章节、资料、知识条目、考点统计和关联课程内容。
+
+响应示例：
+
+```json
+{
+  "courseId": 1,
+  "courseName": "数据结构",
+  "templateId": 1,
+  "templateName": "通用 Agent 知识包",
+  "exportName": "数据结构期末知识包",
+  "exportFormat": "ZIP",
+  "summary": {
+    "chapterCount": 8,
+    "materialCount": 12,
+    "parsedMaterialCount": 10,
+    "knowledgeItemCount": 86,
+    "examStatCount": 24,
+    "relatedCourseCount": 1,
+    "relatedMaterialCount": 3,
+    "relatedKnowledgeItemCount": 18
+  },
+  "chapters": [],
+  "materials": [],
+  "knowledgeItems": [],
+  "examStats": [],
+  "relatedCourses": []
+}
+```
+
+关联课程导出规则：
+
+- `includePrerequisiteCourses`：包含当前课程前置课程的重点资料和重点知识。
+- `includeRelatedCourses`：包含当前课程关联课程的重点资料和重点知识。
+- `includeFollowUpCourses`：包含当前课程后续课程的重点资料和重点知识。
+- 后端会根据课程关系校验课程归属，只纳入当前用户拥有的课程。
+- 关联课程只导出重点内容：重点资料、重点资料关联知识、高重要度知识和重点类型知识。
+- 导出记录的 `export_scope` 会保存用户选择的关联课程开关，以及实际纳入的课程 ID。
 
 导出包可包含：
 
@@ -1029,26 +1592,54 @@ prompts/
 source/
 ```
 
-### 15.3 查询导出记录
+开启关联课程导出时，ZIP 会额外包含：
 
-- 状态：规划中
+```text
+context/related-courses.md
+materials/related-course-materials.md
+summaries/related-course-key-points.md
+source/related-course-files.md
+```
+
+成功后会在 `storage/exports/` 下生成 ZIP 文件，并写入 `export_record`。
+同一用户、同一课程的导出记录会自动分配递增版本号 `versionNo`，用于查看和下载历史版本。
+
+### 15.4 查询导出记录
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/exports`
 
-### 15.4 下载导出知识包
+查询参数：
 
-- 状态：规划中
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `userId` | 是 | 当前用户 ID |
+| `courseId` | 否 | 课程 ID；传入时只查询该课程导出记录 |
+
+返回字段包含 `versionNo` 和 `recommended`。前端会按导出时间展示该课程的历史版本，并支持下载任意历史 ZIP。
+
+### 15.5 标记当前推荐版本
+
+- 状态：已实现
+- 方法：`PUT`
+- 路径：`/api/exports/{exportId}/recommended`
+
+查询参数：`userId`。后端会校验导出记录归属和课程归属，并将同一用户、同一课程下其他导出记录的 `recommended` 清空，仅保留当前记录为推荐版本。
+
+### 15.6 下载导出知识包
+
+- 状态：已实现
 - 方法：`GET`
 - 路径：`/api/exports/{exportId}/download`
+
+查询参数：`userId`。后端会校验导出记录归属，并限制文件路径必须位于配置的存储根目录下。
 
 ## 16. 接口实现顺序建议
 
 后续开发建议按以下顺序实现：
 
-1. 标签与知识条目维护
-2. 课程前置关系
-3. 真题题目抽取与知识点映射
-4. 用户掌握状态与知识缺口检测
-5. AI 服务配置与教师画像分析
-6. 个性化复习生成
-7. Agent 知识包导出
+1. 课程前置关系
+2. 用户掌握状态与知识缺口检测
+3. AI 服务配置与教师画像分析
+4. 个性化复习生成

@@ -16,6 +16,10 @@ export function deleteCourse(courseId, userId) {
   return request.delete(`/courses/${courseId}`, { params: { userId } })
 }
 
+export function getCourseStats(courseId, userId) {
+  return request.get(`/courses/${courseId}/stats`, { params: { userId } })
+}
+
 export function listChapters(courseId, userId) {
   return request.get(`/courses/${courseId}/chapters`, { params: { userId } })
 }

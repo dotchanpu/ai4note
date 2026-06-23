@@ -4,15 +4,19 @@ import com.example.coursekb.dto.KnowledgeItemRequest;
 import com.example.coursekb.entity.Chapter;
 import com.example.coursekb.entity.KnowledgeItem;
 import com.example.coursekb.entity.Material;
+import com.example.coursekb.entity.UserKnowledgeStatus;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.mapper.ChapterRepository;
 import com.example.coursekb.mapper.KnowledgeItemRepository;
 import com.example.coursekb.mapper.MaterialRepository;
+import com.example.coursekb.mapper.UserKnowledgeStatusRepository;
 import com.example.coursekb.vo.KnowledgeItemVO;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +31,7 @@ public class KnowledgeItemService {
     private final CourseService courseService;
     private final MaterialService materialService;
     private final KnowledgeItemRepository knowledgeItemRepository;
+    private final UserKnowledgeStatusRepository userKnowledgeStatusRepository;
     private final MaterialRepository materialRepository;
     private final ChapterRepository chapterRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -35,12 +40,14 @@ public class KnowledgeItemService {
             CourseService courseService,
             MaterialService materialService,
             KnowledgeItemRepository knowledgeItemRepository,
+            UserKnowledgeStatusRepository userKnowledgeStatusRepository,
             MaterialRepository materialRepository,
             ChapterRepository chapterRepository,
             JdbcTemplate jdbcTemplate) {
         this.courseService = courseService;
         this.materialService = materialService;
         this.knowledgeItemRepository = knowledgeItemRepository;
+        this.userKnowledgeStatusRepository = userKnowledgeStatusRepository;
         this.materialRepository = materialRepository;
         this.chapterRepository = chapterRepository;
         this.jdbcTemplate = jdbcTemplate;
@@ -50,12 +57,23 @@ public class KnowledgeItemService {
             Long courseId, Long userId, Long materialId, Long chapterId, String itemType) {
         courseService.getOwnedCourse(courseId, userId);
         String normalizedType = normalizeOptionalType(itemType);
-        return knowledgeItemRepository.findByCourseIdOrderByImportanceLevelDescIdDesc(courseId)
+        List<KnowledgeItem> items = knowledgeItemRepository.findByCourseIdOrderByImportanceLevelDescIdDesc(courseId)
                 .stream()
                 .filter(item -> materialId == null || materialId.equals(item.getMaterialId()))
                 .filter(item -> chapterId == null || chapterId.equals(item.getChapterId()))
                 .filter(item -> normalizedType == null || normalizedType.equals(item.getItemType()))
-                .map(this::toVO)
+                .collect(Collectors.toList());
+        if (items.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, UserKnowledgeStatus> masteryByItemId = userKnowledgeStatusRepository
+                .findByUserIdAndKnowledgeItemIdIn(
+                        userId,
+                        items.stream().map(KnowledgeItem::getId).collect(Collectors.toList()))
+                .stream()
+                .collect(Collectors.toMap(UserKnowledgeStatus::getKnowledgeItemId, status -> status));
+        return items.stream()
+                .map(item -> toVO(item, masteryByItemId.get(item.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -150,13 +168,19 @@ public class KnowledgeItemService {
     }
 
     private KnowledgeItemVO toVO(KnowledgeItem item) {
+        return toVO(item, null);
+    }
+
+    private KnowledgeItemVO toVO(KnowledgeItem item, UserKnowledgeStatus mastery) {
         String materialTitle = item.getMaterialId() == null
                 ? null
                 : materialRepository.findById(item.getMaterialId()).map(Material::getTitle).orElse(null);
         String chapterTitle = item.getChapterId() == null
                 ? null
                 : chapterRepository.findById(item.getChapterId()).map(Chapter::getChapterTitle).orElse(null);
-        return KnowledgeItemVO.from(item, materialTitle, chapterTitle);
+        KnowledgeItemVO result = KnowledgeItemVO.from(item, materialTitle, chapterTitle);
+        result.applyMastery(mastery);
+        return result;
     }
 
     private String normalizeType(String value) {

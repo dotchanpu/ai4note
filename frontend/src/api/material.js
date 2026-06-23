@@ -11,6 +11,13 @@ export function uploadMaterial(data) {
   })
 }
 
+export function uploadMaterialsBatch(data) {
+  return request.post('/materials/batch', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 180000
+  })
+}
+
 export function updateMaterial(materialId, userId, data) {
   return request.put(`/materials/${materialId}`, data, {
     params: { userId }
@@ -30,8 +37,21 @@ export function parsePdf(materialId, userId) {
   })
 }
 
+export function generateMaterialSummary(materialId, userId, data = {}) {
+  return request.post(`/materials/${materialId}/summary/ai-generate`, data, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
 export function listTextChunks(materialId, userId) {
   return request.get(`/materials/${materialId}/text-chunks`, {
+    params: { userId }
+  })
+}
+
+export function listSimilarMaterials(materialId, userId) {
+  return request.get(`/materials/${materialId}/similar`, {
     params: { userId }
   })
 }

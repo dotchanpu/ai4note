@@ -172,12 +172,111 @@
                 <span>chapters</span>
               </div>
               <div>
-                <strong>{{ String(materials.length).padStart(2, '0') }}</strong>
+                <strong>{{ String(overviewStats.materialCount).padStart(2, '0') }}</strong>
                 <span>materials</span>
               </div>
               <div>
-                <strong>{{ materials.filter(item => item.parsedChunkCount > 0).length }}</strong>
+                <strong>{{ overviewStats.parsedMaterialCount }}</strong>
                 <span>parsed</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.knowledgeItemCount }}</strong>
+                <span>knowledge</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.examQuestionCount }}</strong>
+                <span>questions</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.examMappingCount }}</strong>
+                <span>mappings</span>
+              </div>
+              <div>
+                <strong>{{ overviewStats.exportCount }}</strong>
+                <span>exports</span>
+              </div>
+            </div>
+            <div v-loading="courseStatsLoading" class="course-type-distribution">
+              <div class="type-distribution-heading">
+                <strong>资料类型分布</strong>
+                <span>{{ overviewStats.materialCount }} 份资料</span>
+              </div>
+              <div class="type-distribution-list">
+                <div v-for="item in materialTypeDistribution" :key="item.type" class="type-distribution-row">
+                  <span>{{ item.label }}</span>
+                  <div>
+                    <i :style="{ width: `${item.percent}%` }"></i>
+                  </div>
+                  <strong>{{ item.count }}</strong>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="relations"
+            class="relation-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'relations' }"
+          >
+            <div class="relation-heading">
+              <div>
+                <p class="eyebrow">课程关系</p>
+                <h2>把前置课、关联课和后续课串起来<span>.</span></h2>
+              </div>
+              <p>课程关系会用于后续关联导出、知识缺口检测和跨课程复习规划。</p>
+            </div>
+
+            <div class="relation-panel">
+              <div class="relation-form">
+                <label>
+                  <span>关联课程</span>
+                  <el-select v-model="relationForm.relatedCourseId" filterable placeholder="选择一门课程">
+                    <el-option
+                      v-for="course in relationCandidateCourses"
+                      :key="course.id"
+                      :label="`${course.courseName} / ${course.courseCode || '未设置编号'}`"
+                      :value="course.id"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>关系类型</span>
+                  <el-select v-model="relationForm.relationType">
+                    <el-option
+                      v-for="option in relationTypeOptions"
+                      :key="option.type"
+                      :label="option.label"
+                      :value="option.type"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>关系说明</span>
+                  <el-input v-model="relationForm.reason" maxlength="255" placeholder="例如：学习本课前建议先掌握基础语法" />
+                </label>
+                <button type="button" :disabled="relationSaving" @click="saveRelation">
+                  {{ relationSaving ? '保存中…' : '添加关系' }}
+                </button>
+              </div>
+
+              <div v-loading="relationLoading" class="relation-groups">
+                <section v-for="group in relationGroups" :key="group.type" class="relation-group">
+                  <div class="relation-group-heading">
+                    <strong>{{ group.label }}</strong>
+                    <span>{{ group.items.length }} 门</span>
+                  </div>
+                  <article v-for="relation in group.items" :key="relation.id" class="relation-card">
+                    <div>
+                      <strong>{{ relation.relatedCourseName }}</strong>
+                      <p>{{ relation.relatedCourseCode || '未设置编号' }} / {{ relation.relatedSemester || '未设置学期' }}</p>
+                      <small>{{ relation.reason || '暂无关系说明' }}</small>
+                    </div>
+                    <button type="button" @click="removeRelation(relation)">删除</button>
+                  </article>
+                  <div v-if="group.items.length === 0" class="relation-empty">
+                    暂无{{ group.label }}。
+                  </div>
+                </section>
               </div>
             </div>
           </section>
@@ -291,9 +390,24 @@
                       <button
                         v-if="material.parsedChunkCount > 0"
                         type="button"
+                        :disabled="isSummaryGenerating(material.id)"
+                        @click="runMaterialSummary(material)"
+                      >
+                        {{ isSummaryGenerating(material.id) ? '摘要中…' : material.summary ? '重新摘要' : '生成摘要' }}
+                      </button>
+                      <button
+                        v-if="material.parsedChunkCount > 0"
+                        type="button"
                         @click="showParsedText(material)"
                       >
                         查看文本 ↗
+                      </button>
+                      <button
+                        v-if="material.materialType === 'EXAM'"
+                        type="button"
+                        @click="openExamWorkbench(material)"
+                      >
+                        exam mapping
                       </button>
                       <button type="button" class="danger-text" @click="confirmMaterialDeletion(material)">
                         删除资料
@@ -364,6 +478,35 @@
                   <span>只看重点资料</span>
                 </label>
                 <button type="button" class="search-reset" @click="resetSearch">清空筛选</button>
+              </div>
+            </div>
+
+            <div class="search-history" v-loading="searchRecordLoading">
+              <div class="search-history-heading">
+                <div>
+                  <strong>{{ searchRecords.length }}</strong>
+                  <span>历史搜索</span>
+                </div>
+                <button type="button" :disabled="searchRecordLoading" @click="loadSearchRecords">
+                  刷新历史
+                </button>
+              </div>
+              <div v-if="searchRecords.length > 0" class="search-history-list">
+                <button
+                  v-for="record in searchRecords"
+                  :key="record.id"
+                  type="button"
+                  @click="rerunSearchRecord(record)"
+                >
+                  <strong>{{ record.keyword }}</strong>
+                  <span>{{ searchTypeLabel(record.searchType) }}</span>
+                  <span>{{ record.resultCount }} 条结果</span>
+                  <small>{{ formatSearchTime(record.searchTime) }}</small>
+                </button>
+              </div>
+              <div v-else class="search-history-empty">
+                <strong>还没有搜索记录。</strong>
+                <p>完成一次课程检索后，关键词和结果数量会出现在这里。</p>
               </div>
             </div>
 
@@ -491,12 +634,37 @@
               <button type="button" :disabled="tagSaving" @click="saveSelectedMaterialTags">
                 {{ tagSaving ? '保存中…' : '保存标签' }}
               </button>
+              <button
+                type="button"
+                :disabled="tagPreviewLoading || !knowledgeForm.materialId"
+                @click="previewTags"
+              >
+                {{ tagPreviewLoading ? '提取中…' : 'AI 提取关键词' }}
+              </button>
+              <div v-if="previewedMaterialTags.length" class="tag-preview-panel">
+                <div>
+                  <strong>候选关键词</strong>
+                  <span>确认后写入资料标签</span>
+                </div>
+                <button
+                  v-for="tag in previewedMaterialTags"
+                  :key="tag"
+                  type="button"
+                  :class="{ active: selectedMaterialTags.includes(tag) }"
+                  @click="togglePreviewTag(tag)"
+                >
+                  {{ tag }}
+                </button>
+                <button type="button" class="tag-preview-apply" @click="applyPreviewTags">
+                  写入候选标签
+                </button>
+              </div>
             </div>
 
             <div class="knowledge-toolbar">
               <div>
                 <strong>{{ knowledgeItems.length }}</strong>
-                <span>knowledge items</span>
+                <span>知识条目</span>
               </div>
               <el-select
                 v-model="knowledgeFilterType"
@@ -531,6 +699,61 @@
                   <span v-if="item.sourcePage">第 {{ item.sourcePage }} 页</span>
                   <span>{{ item.chapterTitle || '未关联章节' }}</span>
                 </div>
+                <div class="mastery-toggle" :class="`mastery-toggle-${(item.masteryStatus || 'UNKNOWN').toLowerCase()}`">
+                  <button
+                    v-for="option in masteryStatusOptions"
+                    :key="option.status"
+                    type="button"
+                    :class="{ active: (item.masteryStatus || 'UNKNOWN') === option.status }"
+                    :disabled="isMasterySaving(item.id)"
+                    @click="saveKnowledgeMastery(item, option.status)"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+                <div class="knowledge-mastery">
+                  <div class="knowledge-mastery-row">
+                    <label>
+                      <span>掌握状态</span>
+                      <el-select v-model="item.masteryStatus" placeholder="选择状态">
+                        <el-option
+                          v-for="option in masteryStatusOptions"
+                          :key="option.status"
+                          :label="option.label"
+                          :value="option.status"
+                        />
+                      </el-select>
+                    </label>
+                    <label>
+                      <span>掌握分数</span>
+                      <el-input-number
+                        v-model="item.masteryScore"
+                        :min="0"
+                        :max="100"
+                        :step="5"
+                        controls-position="right"
+                      />
+                    </label>
+                  </div>
+                  <el-input
+                    v-model="item.masteryNote"
+                    type="textarea"
+                    :rows="2"
+                    maxlength="300"
+                    show-word-limit
+                    placeholder="记录薄弱点、复习提醒或解题问题"
+                  />
+                  <div class="knowledge-mastery-actions">
+                    <span>最近复习：{{ formatReviewTime(item.lastReviewTime) }}</span>
+                    <button
+                      type="button"
+                      :disabled="isMasterySaving(item.id)"
+                      @click="saveKnowledgeMastery(item)"
+                    >
+                      {{ isMasterySaving(item.id) ? '保存中…' : '保存掌握状态' }}
+                    </button>
+                  </div>
+                </div>
                 <button type="button" class="danger-text" @click="confirmKnowledgeDeletion(item)">
                   删除条目
                 </button>
@@ -541,11 +764,968 @@
               </div>
             </div>
           </section>
+
+          <section
+            id="gaps"
+            class="gap-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'gaps' }"
+          >
+            <div class="gap-heading">
+              <div>
+                <p class="eyebrow">知识缺口</p>
+                <h2>找出复习优先级<span>.</span></h2>
+              </div>
+              <p>结合课程知识点、前置课程、掌握状态和真题高频考点，生成可追溯的薄弱知识清单。</p>
+            </div>
+
+            <div class="gap-generator">
+              <label>
+                <span>报告名称</span>
+                <el-input v-model="gapForm.reportName" maxlength="128" placeholder="例如：期末前知识缺口检查" />
+              </label>
+              <label class="gap-switch">
+                <el-switch v-model="gapForm.includePrerequisites" />
+                <span>包含前置课程</span>
+                <small>{{ relationGroups[0]?.items.length || 0 }} 门</small>
+              </label>
+              <button type="button" :disabled="gapGenerating" @click="generateGapReport">
+                {{ gapGenerating ? '生成中…' : '生成报告' }}
+              </button>
+            </div>
+
+            <div v-loading="prerequisiteGapLoading" class="prerequisite-hint-panel">
+              <div class="prerequisite-hint-heading">
+                <div>
+                  <span>前置课程提示</span>
+                  <strong>{{ prerequisiteGapHints.length }}</strong>
+                </div>
+                <button type="button" :disabled="prerequisiteGapLoading" @click="loadPrerequisiteGapHints">
+                  {{ prerequisiteGapLoading ? '检查中…' : '检查前置缺口' }}
+                </button>
+              </div>
+              <div v-if="prerequisiteGapHints.length > 0" class="prerequisite-hint-list">
+                <article
+                  v-for="item in prerequisiteGapHints.slice(0, 6)"
+                  :key="`${item.sourceCourseId}-${item.knowledgeItemId}`"
+                >
+                  <div>
+                    <span>{{ item.sourceCourseName }}</span>
+                    <strong>优先级 {{ item.severityLevel }}</strong>
+                  </div>
+                  <h3>{{ item.knowledgeTitle }}</h3>
+                  <p>{{ item.reason }}</p>
+                  <small>{{ item.suggestion }}</small>
+                </article>
+              </div>
+              <div v-else class="prerequisite-hint-empty">
+                {{ prerequisiteRelationCount > 0 ? '暂无明显前置课程缺口' : '先维护前置课程关系后再检查' }}
+              </div>
+            </div>
+
+            <div class="gap-layout">
+              <aside v-loading="gapLoading" class="gap-report-list">
+                <div class="gap-report-heading">
+                  <strong>{{ gapReports.length }}</strong>
+                  <span>历史报告</span>
+                </div>
+                <button
+                  v-for="report in gapReports"
+                  :key="report.id"
+                  type="button"
+                  :class="{ active: selectedGapReport?.id === report.id }"
+                  @click="selectGapReport(report)"
+                >
+                  <strong>{{ report.reportName }}</strong>
+                  <span>{{ report.itemCount }} 个缺口 · {{ formatGapTime(report.createTime) }}</span>
+                </button>
+                <div v-if="!gapLoading && gapReports.length === 0" class="gap-empty-list">
+                  还没有知识缺口报告
+                </div>
+              </aside>
+
+              <div class="gap-detail" v-loading="gapItemLoading">
+                <div v-if="selectedGapReport" class="gap-summary">
+                  <div>
+                    <span>缺口总数</span>
+                    <strong>{{ gapStats.total }}</strong>
+                  </div>
+                  <div>
+                    <span>高优先级</span>
+                    <strong>{{ gapStats.severe }}</strong>
+                  </div>
+                  <div>
+                    <span>前置课程相关</span>
+                    <strong>{{ gapStats.prerequisite }}</strong>
+                  </div>
+                </div>
+
+                <p v-if="selectedGapReport" class="gap-report-summary">
+                  {{ selectedGapReport.summary }}
+                </p>
+
+                <div v-if="selectedGapReport" class="remediation-path-panel" v-loading="remediationPathLoading">
+                  <div class="remediation-path-heading">
+                    <div>
+                      <span>补学路径</span>
+                      <strong>{{ remediationPath?.stages?.length || 0 }}</strong>
+                    </div>
+                    <button type="button" :disabled="remediationPathLoading" @click="loadRemediationPath">
+                      {{ remediationPathLoading ? '生成中…' : '生成补学路径' }}
+                    </button>
+                  </div>
+                  <p v-if="remediationPath" class="remediation-path-summary">{{ remediationPath.summary }}</p>
+                  <div v-if="remediationPath?.stages?.length" class="remediation-stage-list">
+                    <article v-for="stage in remediationPath.stages" :key="stage.stageKey">
+                      <div>
+                        <span>{{ stage.stageName }}</span>
+                        <strong>{{ stage.items.length }} 项</strong>
+                      </div>
+                      <p>{{ stage.objective }}</p>
+                      <ol>
+                        <li v-for="item in stage.items.slice(0, 5)" :key="item.knowledgeItemId">
+                          <strong>{{ item.knowledgeTitle }}</strong>
+                          <span>{{ item.sourceCourseName }} · 优先级 {{ item.severityLevel }}</span>
+                        </li>
+                      </ol>
+                    </article>
+                  </div>
+                </div>
+
+                <div v-if="gapItems.length > 0" class="gap-item-grid">
+                  <article v-for="item in gapItems" :key="item.id" class="gap-item-card">
+                    <div class="gap-item-top">
+                      <span>{{ gapTypeLabel(item.gapType) }}</span>
+                      <strong>优先级 {{ item.severityLevel }}</strong>
+                    </div>
+                    <h3>{{ item.knowledgeTitle }}</h3>
+                    <div class="gap-item-meta">
+                      <span>{{ item.sourceCourseName }}</span>
+                      <span>{{ relationTypeLabel(item.relationType) }}</span>
+                      <span>{{ masteryStatusLabel(item.masteryStatus) }}</span>
+                      <span v-if="item.masteryScore !== null">分数 {{ item.masteryScore }}</span>
+                      <span v-if="item.examQuestionCount">真题 {{ item.examQuestionCount }} 次</span>
+                    </div>
+                    <p>{{ item.reason }}</p>
+                    <small>{{ item.suggestion }}</small>
+                  </article>
+                </div>
+
+                <div v-if="selectedGapReport && !gapItemLoading && gapItems.length === 0" class="gap-empty-detail">
+                  <strong>没有发现明显知识缺口。</strong>
+                  <p>可以继续补充掌握状态或真题映射后重新生成。</p>
+                </div>
+
+                <div v-if="!selectedGapReport" class="gap-empty-detail">
+                  <strong>先生成一份知识缺口报告。</strong>
+                  <p>报告会保存历史记录，并按优先级展示薄弱知识点。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="teacher"
+            class="teacher-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'teacher' }"
+          >
+            <div class="teacher-heading">
+              <div>
+                <p class="eyebrow">教师画像</p>
+                <h2>分析出题风格<span>.</span></h2>
+              </div>
+              <p>基于课程资料和往年真题归纳教师的出题风格、题型偏好、评分偏好和复习重点。</p>
+            </div>
+
+            <div class="teacher-layout">
+              <aside class="teacher-control">
+                <div class="teacher-form">
+                  <label>
+                    <span>教师名称</span>
+                    <el-input v-model="teacherProfileForm.teacherName" maxlength="128" placeholder="例如：张老师" />
+                  </label>
+                  <label>
+                    <span>分析资料</span>
+                    <el-select
+                      v-model="teacherProfileForm.materialIds"
+                      multiple
+                      collapse-tags
+                      clearable
+                      placeholder="默认使用全部可分析资料"
+                    >
+                      <el-option
+                        v-for="material in teacherProfileMaterials"
+                        :key="material.id"
+                        :label="material.title"
+                        :value="material.id"
+                      />
+                    </el-select>
+                  </label>
+                  <button
+                    type="button"
+                    :disabled="teacherProfileAnalyzing"
+                    @click="runTeacherProfileAnalysis"
+                  >
+                    {{ teacherProfileAnalyzing ? '分析中…' : '开始分析' }}
+                  </button>
+                </div>
+
+                <div v-loading="teacherProfileLoading" class="teacher-profile-list">
+                  <button
+                    v-for="profile in teacherProfiles"
+                    :key="profile.id"
+                    type="button"
+                    :class="{ active: selectedTeacherProfile?.id === profile.id }"
+                    @click="selectTeacherProfile(profile)"
+                  >
+                    <strong>{{ profile.teacherName }}</strong>
+                    <span>{{ teacherStatusLabel(profile.analysisStatus) }}</span>
+                  </button>
+                  <div
+                    v-if="!teacherProfileLoading && teacherProfiles.length === 0"
+                    class="teacher-empty-list"
+                  >
+                    还没有教师画像
+                  </div>
+                </div>
+              </aside>
+
+              <div class="teacher-profile-detail">
+                <template v-if="selectedTeacherProfile">
+                  <div class="teacher-profile-top">
+                    <div>
+                      <span>{{ teacherStatusLabel(selectedTeacherProfile.analysisStatus) }}</span>
+                      <h3>{{ selectedTeacherProfile.teacherName }}</h3>
+                    </div>
+                    <div class="teacher-profile-score">
+                      <strong>{{ selectedTeacherProfile.confidenceScore ?? 0 }}%</strong>
+                      <button type="button" :disabled="teacherConfidenceScoring" @click="recalculateTeacherConfidence">
+                        {{ teacherConfidenceScoring ? '评分中…' : '重算置信度' }}
+                      </button>
+                      <button type="button" :disabled="teacherProfileReanalyzing" @click="runTeacherProfileReanalysis">
+                        {{ teacherProfileReanalyzing ? '分析中…' : '重新分析' }}
+                      </button>
+                      <button type="button" @click="openTeacherProfileEditor">编辑画像</button>
+                    </div>
+                  </div>
+                  <div v-if="teacherProfileEditing" class="teacher-edit-panel">
+                    <div class="teacher-edit-grid">
+                      <label>
+                        <span>教师名称</span>
+                        <el-input v-model="teacherEditForm.teacherName" maxlength="128" />
+                      </label>
+                      <label>
+                        <span>置信度</span>
+                        <el-input-number
+                          v-model="teacherEditForm.confidenceScore"
+                          :min="0"
+                          :max="100"
+                          :step="5"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label>
+                        <span>出题风格</span>
+                        <el-input v-model="teacherEditForm.examStyle" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>题型偏好</span>
+                        <el-input v-model="teacherEditForm.questionPreference" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>评分偏好</span>
+                        <el-input v-model="teacherEditForm.gradingPreference" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>重点章节</span>
+                        <el-input v-model="teacherEditForm.focusTopics" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>规避内容</span>
+                        <el-input v-model="teacherEditForm.avoidTopics" type="textarea" :rows="3" />
+                      </label>
+                      <label>
+                        <span>依据摘要</span>
+                        <el-input v-model="teacherEditForm.sourceSummary" type="textarea" :rows="3" />
+                      </label>
+                    </div>
+                    <div class="teacher-edit-actions">
+                      <button type="button" @click="cancelTeacherProfileEdit">取消</button>
+                      <button type="button" :disabled="teacherProfileSaving" @click="saveTeacherProfileEdit">
+                        {{ teacherProfileSaving ? '保存中…' : '保存并确认' }}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="teacher-profile-grid">
+                    <section>
+                      <span>出题风格</span>
+                      <p>{{ selectedTeacherProfile.examStyle || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>题型偏好</span>
+                      <p>{{ selectedTeacherProfile.questionPreference || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>评分偏好</span>
+                      <p>{{ selectedTeacherProfile.gradingPreference || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>重点章节</span>
+                      <p>{{ selectedTeacherProfile.focusTopics || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>规避内容</span>
+                      <p>{{ selectedTeacherProfile.avoidTopics || '暂无分析结果' }}</p>
+                    </section>
+                    <section>
+                      <span>依据摘要</span>
+                      <p>{{ selectedTeacherProfile.sourceSummary || '暂无分析结果' }}</p>
+                    </section>
+                  </div>
+                  <form class="mock-exam-panel" @submit.prevent="generateMockExamFromProfile">
+                    <div class="mock-exam-heading">
+                      <div>
+                        <span>AI 模拟题</span>
+                        <strong>基于画像生成</strong>
+                      </div>
+                      <button type="submit" :disabled="mockExamGenerating">
+                        {{ mockExamGenerating ? '生成中…' : '生成模拟题' }}
+                      </button>
+                    </div>
+                    <div class="mock-exam-controls">
+                      <label>
+                        <span>题数</span>
+                        <el-input-number
+                          v-model="mockExamForm.questionCount"
+                          :min="1"
+                          :max="30"
+                          :step="1"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label>
+                        <span>难度</span>
+                        <el-select v-model="mockExamForm.difficultyLevel">
+                          <el-option
+                            v-for="option in reviewDifficultyOptions"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                          />
+                        </el-select>
+                      </label>
+                      <label>
+                        <span>补充要求</span>
+                        <el-input
+                          v-model="mockExamForm.customRequirement"
+                          maxlength="1000"
+                          placeholder="例如：增加设计题或实验题"
+                        />
+                      </label>
+                    </div>
+                    <div v-if="mockExamResult" class="mock-exam-result">
+                      <div>
+                        <strong>{{ mockExamResult.title }}</strong>
+                        <span>{{ mockExamResult.questionCount }} 题 · {{ mockExamResult.resultPath }}</span>
+                      </div>
+                      <button type="button" @click="downloadMockExam(mockExamResult.task)">
+                        下载 Markdown
+                      </button>
+                      <pre>{{ mockExamResult.content }}</pre>
+                    </div>
+                  </form>
+                  <form class="mock-exam-panel sprint-outline-panel" @submit.prevent="generateSprintOutlineFromProfile">
+                    <div class="mock-exam-heading">
+                      <div>
+                        <span>冲刺提纲</span>
+                        <strong>按出题风格规划</strong>
+                      </div>
+                      <button type="submit" :disabled="sprintOutlineGenerating">
+                        {{ sprintOutlineGenerating ? '生成中…' : '生成冲刺提纲' }}
+                      </button>
+                    </div>
+                    <div class="mock-exam-controls">
+                      <label>
+                        <span>天数</span>
+                        <el-input-number
+                          v-model="sprintOutlineForm.days"
+                          :min="1"
+                          :max="30"
+                          :step="1"
+                          controls-position="right"
+                        />
+                      </label>
+                      <label class="sprint-outline-requirement">
+                        <span>补充要求</span>
+                        <el-input
+                          v-model="sprintOutlineForm.customRequirement"
+                          maxlength="1000"
+                          placeholder="例如：最后两天集中刷综合题"
+                        />
+                      </label>
+                    </div>
+                    <div v-if="sprintOutlineResult" class="mock-exam-result">
+                      <div>
+                        <strong>{{ sprintOutlineResult.title }}</strong>
+                        <span>{{ sprintOutlineResult.dayCount }} 天 · {{ sprintOutlineResult.resultPath }}</span>
+                      </div>
+                      <button type="button" @click="downloadSprintOutline(sprintOutlineResult.task)">
+                        下载 Markdown
+                      </button>
+                      <pre>{{ sprintOutlineResult.content }}</pre>
+                    </div>
+                  </form>
+                  <div v-loading="teacherEvidenceLoading" class="teacher-evidence-panel">
+                    <div class="teacher-evidence-heading">
+                      <strong>{{ teacherProfileEvidence.length }}</strong>
+                      <span>证据来源</span>
+                    </div>
+                    <div v-if="teacherProfileEvidence.length > 0" class="teacher-evidence-list">
+                      <article v-for="evidence in teacherProfileEvidence" :key="evidence.id">
+                        <div>
+                          <strong>{{ evidence.materialTitle }}</strong>
+                          <span>{{ evidenceTypeLabel(evidence.evidenceType) }}</span>
+                        </div>
+                        <p>{{ evidence.evidenceSummary }}</p>
+                        <small>
+                          {{ evidence.materialType || '资料' }}
+                          <template v-if="evidence.sourcePage"> · 第 {{ evidence.sourcePage }} 页</template>
+                          <template v-if="evidence.confidenceScore !== null"> · 置信度 {{ evidence.confidenceScore }}%</template>
+                        </small>
+                      </article>
+                    </div>
+                    <div v-else class="teacher-evidence-empty">
+                      暂无证据来源
+                    </div>
+                  </div>
+                </template>
+                <div v-else class="teacher-empty-detail">
+                  <strong>先生成教师画像。</strong>
+                  <p>建议选择课件、真题和评分相关资料一起分析。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="review"
+            class="review-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'review' }"
+          >
+            <div class="review-heading">
+              <div>
+                <p class="eyebrow">复习配置</p>
+                <h2>定义生成目标<span>.</span></h2>
+              </div>
+              <p>保存考试目标、难度、输出类型、前置课程、教师画像和自定义要求，后续可直接用于复习资料生成。</p>
+            </div>
+
+            <div class="review-layout">
+              <form class="review-form" @submit.prevent="saveReviewProfile">
+                <label>
+                  <span>配置名称</span>
+                  <el-input v-model="reviewProfileForm.profileName" maxlength="128" />
+                </label>
+                <label>
+                  <span>考试目标</span>
+                  <el-input v-model="reviewProfileForm.target" maxlength="128" placeholder="例如：期末考试" />
+                </label>
+                <label>
+                  <span>复习难度</span>
+                  <el-select v-model="reviewProfileForm.difficultyLevel">
+                    <el-option
+                      v-for="option in reviewDifficultyOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>输出类型</span>
+                  <el-select v-model="reviewProfileForm.outputType">
+                    <el-option
+                      v-for="option in reviewOutputOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </label>
+                <label>
+                  <span>教师画像</span>
+                  <el-select v-model="reviewProfileForm.teacherProfileId" clearable placeholder="不绑定画像">
+                    <el-option
+                      v-for="profile in teacherProfiles"
+                      :key="profile.id"
+                      :label="profile.teacherName"
+                      :value="profile.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="review-switch">
+                  <el-switch v-model="reviewProfileForm.includePrerequisites" />
+                  <span>包含前置课程</span>
+                </label>
+                <label class="review-wide">
+                  <span>自定义要求</span>
+                  <el-input
+                    v-model="reviewProfileForm.customRequirement"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="例如：重点覆盖树、图和排序，输出适合考前两天冲刺的版本"
+                  />
+                </label>
+                <div class="review-form-actions">
+                  <button v-if="editingReviewProfileId" type="button" @click="resetReviewProfileForm">
+                    取消编辑
+                  </button>
+                  <button type="submit" :disabled="reviewProfileSaving">
+                    {{ reviewProfileSaving ? '保存中…' : editingReviewProfileId ? '保存修改' : '创建配置' }}
+                  </button>
+                </div>
+              </form>
+
+              <div v-loading="reviewProfileLoading" class="review-profile-list">
+                <article v-for="profile in reviewProfiles" :key="profile.id" class="review-profile-card">
+                  <div class="review-card-top">
+                    <span>{{ reviewOutputLabel(profile.outputType) }}</span>
+                    <strong>{{ reviewDifficultyLabel(profile.difficultyLevel) }}</strong>
+                  </div>
+                  <h3>{{ profile.profileName }}</h3>
+                  <p>{{ profile.customRequirement || '暂无自定义要求' }}</p>
+                  <div class="review-card-meta">
+                    <span>{{ profile.target || '未设置目标' }}</span>
+                    <span>{{ profile.includePrerequisites ? '包含前置课程' : '仅当前课程' }}</span>
+                    <span>{{ profile.teacherName || '未绑定教师画像' }}</span>
+                  </div>
+                  <div class="review-card-actions">
+                    <button type="button" @click="editReviewProfile(profile)">编辑</button>
+                    <button type="button" @click="removeReviewProfile(profile)">删除</button>
+                  </div>
+                </article>
+                <div
+                  v-if="!reviewProfileLoading && reviewProfiles.length === 0"
+                  class="review-empty"
+                >
+                  <strong>还没有复习配置。</strong>
+                  <p>先创建一个目标，后续生成复习资料时可以复用。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="ai-config"
+            class="ai-config-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'ai-config' }"
+          >
+            <div class="ai-config-heading">
+              <div>
+                <p class="eyebrow">AI 配置</p>
+                <h2>管理模型供应商<span>.</span></h2>
+              </div>
+              <p>保存供应商、Base URL、模型名称和 API Key 环境变量别名。系统不会保存明文 API Key。</p>
+            </div>
+
+            <div class="ai-config-status">
+              <div>
+                <span>默认 DeepSeek</span>
+                <strong>{{ aiDefaultStatus?.configured ? '已配置' : '未配置' }}</strong>
+              </div>
+              <div>
+                <span>默认模型</span>
+                <strong>{{ aiDefaultStatus?.defaultModel || '未读取' }}</strong>
+              </div>
+              <div>
+                <span>配置数量</span>
+                <strong>{{ aiProviders.length }}</strong>
+              </div>
+            </div>
+
+            <div class="ai-config-layout">
+              <form class="ai-provider-form" @submit.prevent="saveAiProvider">
+                <label>
+                  <span>供应商名称</span>
+                  <el-input v-model="aiProviderForm.providerName" maxlength="64" />
+                </label>
+                <label>
+                  <span>Base URL</span>
+                  <el-input v-model="aiProviderForm.baseUrl" maxlength="255" />
+                </label>
+                <label>
+                  <span>模型名称</span>
+                  <el-input v-model="aiProviderForm.modelName" maxlength="128" />
+                </label>
+                <label>
+                  <span>API Key 环境变量别名</span>
+                  <el-input v-model="aiProviderForm.apiKeyAlias" maxlength="128" placeholder="例如：DEEPSEEK_API_KEY" />
+                </label>
+                <label class="ai-provider-switch">
+                  <el-switch v-model="aiProviderForm.enabled" />
+                  <span>启用配置</span>
+                </label>
+                <p>这里只保存环境变量名，不保存 API Key 明文。</p>
+                <div class="ai-provider-actions">
+                  <button v-if="editingAiProviderId" type="button" @click="resetAiProviderForm">
+                    取消编辑
+                  </button>
+                  <button type="submit" :disabled="aiProviderSaving">
+                    {{ aiProviderSaving ? '保存中…' : editingAiProviderId ? '保存修改' : '创建配置' }}
+                  </button>
+                </div>
+              </form>
+
+              <div v-loading="aiProviderLoading" class="ai-provider-list">
+                <article v-for="config in aiProviders" :key="config.id" class="ai-provider-card">
+                  <div class="ai-provider-card-top">
+                    <span>{{ config.enabled ? '已启用' : '已停用' }}</span>
+                    <strong>{{ config.providerName }}</strong>
+                  </div>
+                  <h3>{{ config.modelName }}</h3>
+                  <p>{{ config.baseUrl }}</p>
+                  <div class="ai-provider-meta">
+                    <span>{{ config.apiKeyAlias || '未设置 Key 别名' }}</span>
+                  </div>
+                  <div class="ai-provider-card-actions">
+                    <button type="button" @click="editAiProvider(config)">编辑</button>
+                    <button type="button" @click="removeAiProvider(config)">删除</button>
+                  </div>
+                </article>
+                <div v-if="!aiProviderLoading && aiProviders.length === 0" class="ai-provider-empty">
+                  <strong>还没有自定义 AI 配置。</strong>
+                  <p>默认 DeepSeek 环境变量配置仍然可用。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="ai-tasks"
+            class="ai-task-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'ai-tasks' }"
+          >
+            <div class="ai-task-heading">
+              <div>
+                <p class="eyebrow">AI 任务记录</p>
+                <h2>追踪生成任务<span>.</span></h2>
+              </div>
+              <p>保存教师画像、知识整理和后续复习生成任务的提示词、状态、结果路径和失败原因，便于排查与复用。</p>
+            </div>
+
+            <div class="ai-task-status">
+              <div>
+                <span>任务总数</span>
+                <strong>{{ aiTaskStats.total }}</strong>
+              </div>
+              <div>
+                <span>运行中</span>
+                <strong>{{ aiTaskStats.running }}</strong>
+              </div>
+              <div>
+                <span>失败</span>
+                <strong>{{ aiTaskStats.failed }}</strong>
+              </div>
+              <button type="button" :disabled="aiTaskLoading" @click="loadAiGenerationTasks">
+                {{ aiTaskLoading ? '刷新中…' : '刷新记录' }}
+              </button>
+            </div>
+
+            <div v-loading="aiTaskLoading" class="ai-task-list">
+              <article v-for="task in aiGenerationTasks" :key="task.id" class="ai-task-card">
+                <div class="ai-task-card-top">
+                  <span :class="`ai-task-status-${task.status?.toLowerCase() || 'pending'}`">
+                    {{ aiTaskStatusLabel(task.status) }}
+                  </span>
+                  <strong>#{{ task.id }}</strong>
+                </div>
+                <h3>{{ aiTaskTypeLabel(task.taskType) }}</h3>
+                <p>{{ task.prompt || '未保存提示词' }}</p>
+                <div class="ai-task-meta">
+                  <span>{{ formatAiTaskTime(task.createTime) }}</span>
+                  <span v-if="task.finishTime">完成：{{ formatAiTaskTime(task.finishTime) }}</span>
+                  <span v-if="task.resultPath">{{ task.resultPath }}</span>
+                </div>
+                <small v-if="task.errorMessage">{{ task.errorMessage }}</small>
+                <div
+                  v-if="task.taskType === 'MOCK_EXAM' && task.status === 'SUCCESS' && task.resultPath"
+                  class="ai-task-actions"
+                >
+                  <button type="button" @click="downloadMockExam(task)">下载模拟题</button>
+                </div>
+                <div
+                  v-if="task.taskType === 'REVIEW_GENERATION' && task.status === 'SUCCESS' && task.resultPath?.startsWith('sprint-outlines/')"
+                  class="ai-task-actions"
+                >
+                  <button type="button" @click="downloadSprintOutline(task)">下载冲刺提纲</button>
+                </div>
+              </article>
+
+              <div v-if="!aiTaskLoading && aiGenerationTasks.length === 0" class="ai-task-empty">
+                <strong>还没有 AI 生成任务。</strong>
+                <p>运行知识整理或教师画像分析后，这里会记录任务状态。</p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="exam"
+            class="exam-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'exam' }"
+          >
+            <ExamMappingPanel
+              :selected-course="selectedCourse"
+              :current-user-id="currentUser?.id"
+              :materials="materials"
+              :chapters="chapters"
+              :knowledge-items="knowledgeItems"
+              :preferred-material-id="examPreferredMaterialId"
+              @material-parsed="handleExamMaterialParsed"
+              @stats-changed="loadCourseStats"
+            />
+          </section>
+
+          <section
+            id="export"
+            class="export-section scroll-panel"
+            :class="{ 'section-active': activeSection === 'export' }"
+          >
+            <div class="export-heading">
+              <div>
+                <p class="eyebrow">知识包导出</p>
+                <h2>导出给 AI 使用的课程知识包<span>.</span></h2>
+              </div>
+              <p>把课程资料、标签、知识条目、章节结构和考点统计整理成 ZIP，保存导出记录并随时下载。</p>
+            </div>
+
+            <div class="export-panel">
+              <div class="export-form-grid">
+                <label class="export-field">
+                  <span>导出名称</span>
+                  <el-input v-model="exportForm.exportName" maxlength="255" placeholder="例如：期末复习知识包" />
+                </label>
+                <label class="export-field">
+                  <span>导出模板</span>
+                  <el-select v-model="exportForm.templateId" placeholder="选择模板">
+                    <el-option
+                      v-for="template in exportTemplates"
+                      :key="template.id"
+                      :label="`${template.templateName} / ${template.targetAgent}`"
+                      :value="template.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="export-field">
+                  <span>章节范围</span>
+                  <el-select v-model="exportForm.chapterIds" multiple collapse-tags clearable placeholder="全部章节">
+                    <el-option
+                      v-for="chapter in chapters"
+                      :key="chapter.id"
+                      :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                      :value="chapter.id"
+                    />
+                  </el-select>
+                </label>
+                <label class="export-field">
+                  <span>资料类型</span>
+                  <el-select v-model="exportForm.materialTypes" multiple collapse-tags clearable placeholder="全部类型">
+                    <el-option
+                      v-for="option in materialTypeOptions"
+                      :key="option.type"
+                      :label="option.label"
+                      :value="option.type"
+                    />
+                  </el-select>
+                </label>
+              </div>
+
+              <div class="export-options">
+                <label>
+                  <el-switch v-model="exportForm.onlyKeyMaterials" />
+                  <span>只导出重点资料</span>
+                </label>
+                <label>
+                  <el-switch v-model="exportForm.includeExamStats" />
+                  <span>包含高频考点统计</span>
+                </label>
+                <label
+                  v-for="option in exportRelationOptions"
+                  :key="option.type"
+                  :class="{ 'option-disabled': option.count === 0 }"
+                >
+                  <el-switch
+                    v-model="exportForm[option.exportField]"
+                    :disabled="option.count === 0"
+                  />
+                  <span>包含{{ option.label }}重点内容</span>
+                  <small>{{ option.count }} 门</small>
+                </label>
+                <button
+                  type="button"
+                  class="export-preview-button"
+                  :disabled="exportPreviewLoading || exportCreating"
+                  @click="runExportPreview"
+                >
+                  <span>{{ exportPreviewLoading ? '预览中…' : '预览内容' }}</span>
+                  <strong>?</strong>
+                </button>
+                <button type="button" :disabled="exportCreating" @click="runExport">
+                  <span>{{ exportCreating ? '导出中…' : '生成知识包' }}</span>
+                  <strong>→</strong>
+                </button>
+              </div>
+
+              <div v-loading="exportPreviewLoading" class="export-preview">
+                <template v-if="exportPreview">
+                  <div class="export-preview-heading">
+                    <div>
+                      <span>预览范围</span>
+                      <strong>{{ exportPreview.courseName }}</strong>
+                    </div>
+                    <p>{{ exportPreview.templateName || '默认模板' }} · {{ exportPreview.exportFormat }}</p>
+                  </div>
+
+                  <div class="export-preview-stats">
+                    <div>
+                      <span>章节</span>
+                      <strong>{{ exportPreview.summary.chapterCount }}</strong>
+                    </div>
+                    <div>
+                      <span>资料</span>
+                      <strong>{{ exportPreview.summary.materialCount }}</strong>
+                    </div>
+                    <div>
+                      <span>已解析</span>
+                      <strong>{{ exportPreview.summary.parsedMaterialCount }}</strong>
+                    </div>
+                    <div>
+                      <span>知识条目</span>
+                      <strong>{{ exportPreview.summary.knowledgeItemCount }}</strong>
+                    </div>
+                    <div>
+                      <span>考点统计</span>
+                      <strong>{{ exportPreview.summary.examStatCount }}</strong>
+                    </div>
+                    <div>
+                      <span>关联课程</span>
+                      <strong>{{ exportPreview.summary.relatedCourseCount }}</strong>
+                    </div>
+                  </div>
+
+                  <div class="export-preview-grid">
+                    <section>
+                      <h3>课程章节</h3>
+                      <ul>
+                        <li v-for="chapter in exportPreview.chapters" :key="chapter.id">
+                          {{ chapter.chapterNo }} {{ chapter.chapterTitle }}
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.chapters.length === 0">未包含章节结构。</p>
+                    </section>
+
+                    <section>
+                      <h3>课程资料</h3>
+                      <ul>
+                        <li v-for="material in exportPreview.materials" :key="material.id">
+                          <strong>{{ material.title }}</strong>
+                          <span>{{ materialTypeLabel(material.materialType) }} · {{ material.parsedChunkCount }} 块文本</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.materials.length === 0">当前筛选条件下没有资料。</p>
+                    </section>
+
+                    <section>
+                      <h3>知识条目</h3>
+                      <ul>
+                        <li v-for="item in exportPreview.knowledgeItems" :key="item.id">
+                          <strong>{{ item.title }}</strong>
+                          <span>{{ knowledgeTypeLabel(item.itemType) }} · 重要度 {{ item.importanceLevel || '-' }}</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.knowledgeItems.length === 0">当前筛选条件下没有知识条目。</p>
+                    </section>
+
+                    <section>
+                      <h3>考点统计</h3>
+                      <ul>
+                        <li v-for="stat in exportPreview.examStats" :key="stat.knowledgeItemId || stat.knowledgeTitle">
+                          <strong>{{ stat.knowledgeTitle }}</strong>
+                          <span>{{ stat.questionCount }} 题 · {{ stat.totalScore || 0 }} 分 · {{ stat.latestExamYear || '未知年份' }}</span>
+                        </li>
+                      </ul>
+                      <p v-if="exportPreview.examStats.length === 0">未包含考点统计。</p>
+                    </section>
+                  </div>
+
+                  <div class="export-preview-related">
+                    <div class="export-preview-related-title">
+                      <strong>{{ exportPreview.summary.relatedMaterialCount }}</strong>
+                      <span>关联课程重点资料</span>
+                      <strong>{{ exportPreview.summary.relatedKnowledgeItemCount }}</strong>
+                      <span>关联课程知识条目</span>
+                    </div>
+                    <article v-for="course in exportPreview.relatedCourses" :key="course.courseId">
+                      <div>
+                        <span>{{ relationTypeLabel(course.relationType) }}</span>
+                        <h3>{{ course.courseName }}</h3>
+                        <p>{{ course.chapterCount }} 个章节 · {{ course.materials.length }} 份重点资料 · {{ course.knowledgeItems.length }} 条知识</p>
+                      </div>
+                      <ul>
+                        <li v-for="material in course.materials" :key="material.id">{{ material.title }}</li>
+                      </ul>
+                    </article>
+                    <p v-if="exportPreview.relatedCourses.length === 0">未包含关联课程内容。</p>
+                  </div>
+                </template>
+                <div v-else class="export-preview-empty">
+                  <strong>先预览，再导出。</strong>
+                  <p>预览会按当前筛选条件展示 ZIP 将包含的课程结构、资料、知识、考点统计和关联课程内容。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="export-records">
+              <div class="export-record-heading">
+                <div>
+                  <strong>{{ exportRecords.length }}</strong>
+                  <span>导出记录</span>
+                </div>
+                <button type="button" :disabled="exportLoading" @click="loadExportData">刷新记录</button>
+              </div>
+
+              <div v-loading="exportLoading" class="export-record-grid">
+                <article v-for="record in exportRecords" :key="record.id" class="export-record-card">
+                  <div>
+                    <div class="export-record-tags">
+                      <span>v{{ record.versionNo || 1 }}</span>
+                      <span>{{ record.exportFormat }}</span>
+                      <span v-if="record.recommended" class="recommended-version">推荐版本</span>
+                    </div>
+                    <h3>{{ record.exportName }}</h3>
+                    <p>{{ formatExportTime(record.exportTime) }}</p>
+                  </div>
+                  <div class="export-record-actions">
+                    <button type="button" @click="downloadExport(record)">下载 ZIP</button>
+                    <button
+                      type="button"
+                      :disabled="record.recommended"
+                      @click="setRecommendedExport(record)"
+                    >
+                      {{ record.recommended ? '当前推荐' : '设为推荐' }}
+                    </button>
+                  </div>
+                </article>
+                <div v-if="!exportLoading && exportRecords.length === 0" class="export-empty">
+                  <strong>还没有导出记录。</strong>
+                  <p>生成第一个课程知识包后，这里会保存记录和下载入口。</p>
+                </div>
+              </div>
+            </div>
+          </section>
         </template>
 
         <section v-else class="no-course">
           <div class="no-course-shape"></div>
-          <p class="eyebrow">your first course</p>
+          <p class="eyebrow">第一门课程</p>
           <h1>从一门课程开始<span>.</span></h1>
           <button type="button" class="primary-pill" @click="openCourseCreator">新建课程 ＋</button>
         </section>
@@ -694,60 +1874,115 @@
           class="studio-upload"
           drag
           :auto-upload="false"
-          :limit="1"
+          multiple
+          :file-list="uploadFileList"
           accept=".pdf,.doc,.docx,.md,.txt"
           :on-change="handleFileChange"
           :on-remove="handleFileRemove"
         >
           <div class="upload-symbol">＋</div>
-          <strong>拖入文件，或点击选择</strong>
+          <strong>拖入一个或多个文件，或点击选择</strong>
           <p>PDF · Word · Markdown · TXT</p>
           <template #tip>
             <div class="upload-tip">支持 PDF、Word、Markdown、TXT，单个文件不超过 50MB。</div>
           </template>
         </el-upload>
       </el-form-item>
-      <el-form-item label="资料标题">
-        <el-input v-model="materialForm.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
-      </el-form-item>
-      <div class="form-grid">
-        <el-form-item label="资料类型">
-          <el-select v-model="materialForm.materialType" class="full-select">
-            <el-option label="课件" value="SLIDE" />
-            <el-option label="实验报告" value="LAB_REPORT" />
-            <el-option label="往年真题" value="EXAM" />
-            <el-option label="复习笔记" value="NOTE" />
-            <el-option label="代码样例" value="CODE" />
-            <el-option label="其他" value="OTHER" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="所属章节">
-          <el-select v-model="materialForm.chapterId" clearable class="full-select">
-            <el-option
-              v-for="chapter in chapters"
-              :key="chapter.id"
-              :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
-              :value="chapter.id"
+      <div v-if="!editingMaterialId && uploadDrafts.length" class="batch-upload-list">
+        <section v-for="(draft, index) in uploadDrafts" :key="draft.uid" class="batch-upload-card">
+          <div class="batch-upload-card-heading">
+            <span>{{ String(index + 1).padStart(2, '0') }}</span>
+            <div>
+              <strong>{{ draft.name }}</strong>
+              <p>{{ formatFileSize(draft.size) }}</p>
+            </div>
+          </div>
+          <el-form-item label="资料标题">
+            <el-input v-model="draft.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
+          </el-form-item>
+          <div class="form-grid">
+            <el-form-item label="资料类型">
+              <el-select v-model="draft.materialType" class="full-select">
+                <el-option label="课件" value="SLIDE" />
+                <el-option label="实验报告" value="LAB_REPORT" />
+                <el-option label="往年真题" value="EXAM" />
+                <el-option label="复习笔记" value="NOTE" />
+                <el-option label="代码样例" value="CODE" />
+                <el-option label="其他" value="OTHER" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="所属章节">
+              <el-select v-model="draft.chapterId" clearable class="full-select">
+                <el-option
+                  v-for="chapter in chapters"
+                  :key="chapter.id"
+                  :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                  :value="chapter.id"
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+          <div class="form-grid">
+            <el-form-item label="年份">
+              <el-input-number v-model="draft.year" :min="1900" :max="2100" />
+            </el-form-item>
+            <el-form-item label="重点资料">
+              <el-switch v-model="draft.isKey" />
+            </el-form-item>
+          </div>
+          <el-form-item label="摘要">
+            <el-input
+              v-model="draft.summary"
+              type="textarea"
+              :rows="2"
+              placeholder="简单描述资料内容、用途或重点。"
             />
-          </el-select>
-        </el-form-item>
+          </el-form-item>
+        </section>
       </div>
-      <div class="form-grid">
-        <el-form-item label="年份">
-          <el-input-number v-model="materialForm.year" :min="1900" :max="2100" />
+      <template v-if="editingMaterialId">
+        <el-form-item label="资料标题">
+          <el-input v-model="materialForm.title" maxlength="255" placeholder="输入一个清楚、容易检索的标题" />
         </el-form-item>
-        <el-form-item label="重点资料">
-          <el-switch v-model="materialForm.isKey" />
+        <div class="form-grid">
+          <el-form-item label="资料类型">
+            <el-select v-model="materialForm.materialType" class="full-select">
+              <el-option label="课件" value="SLIDE" />
+              <el-option label="实验报告" value="LAB_REPORT" />
+              <el-option label="往年真题" value="EXAM" />
+              <el-option label="复习笔记" value="NOTE" />
+              <el-option label="代码样例" value="CODE" />
+              <el-option label="其他" value="OTHER" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="所属章节">
+            <el-select v-model="materialForm.chapterId" clearable class="full-select">
+              <el-option
+                v-for="chapter in chapters"
+                :key="chapter.id"
+                :label="`${chapter.chapterNo} ${chapter.chapterTitle}`"
+                :value="chapter.id"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="form-grid">
+          <el-form-item label="年份">
+            <el-input-number v-model="materialForm.year" :min="1900" :max="2100" />
+          </el-form-item>
+          <el-form-item label="重点资料">
+            <el-switch v-model="materialForm.isKey" />
+          </el-form-item>
+        </div>
+        <el-form-item label="摘要">
+          <el-input
+            v-model="materialForm.summary"
+            type="textarea"
+            :rows="3"
+            placeholder="简单描述资料内容、用途或重点。"
+          />
         </el-form-item>
-      </div>
-      <el-form-item label="摘要">
-        <el-input
-          v-model="materialForm.summary"
-          type="textarea"
-          :rows="3"
-          placeholder="简单描述资料内容、用途或重点。"
-        />
-      </el-form-item>
+      </template>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
@@ -816,6 +2051,50 @@
   </el-dialog>
 
   <el-dialog
+    v-model="similarDialogVisible"
+    class="studio-dialog studio-dialog-similar"
+    modal-class="studio-dialog-overlay"
+    width="680px"
+    :show-close="false"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <div>
+          <p>similar / 相似资料</p>
+          <h2>可能已有重复资料<span>.</span></h2>
+        </div>
+        <button type="button" class="dialog-close" aria-label="关闭" @click="similarDialogVisible = false">
+          ×
+        </button>
+      </div>
+    </template>
+    <div class="similar-dialog">
+      <p v-if="similarSourceMaterial">
+        「{{ similarSourceMaterial.title }}」与以下资料内容接近，建议确认后再继续整理。
+      </p>
+      <article v-for="item in similarMaterialResults" :key="item.material.id" class="similar-material-card">
+        <div>
+          <strong>{{ item.material.title }}</strong>
+          <span>{{ materialTypeLabel(item.material.materialType) }} · {{ Math.round(item.score * 100) }}%</span>
+        </div>
+        <p>{{ item.material.summary || '暂无摘要' }}</p>
+        <div class="similar-reasons">
+          <span v-for="reason in item.reasons" :key="reason">{{ reason }}</span>
+        </div>
+        <button type="button" @click="openSimilarMaterial(item.material)">查看资料</button>
+      </article>
+    </div>
+    <template #footer>
+      <div class="dialog-footer">
+        <button type="button" class="dialog-button dialog-button-primary" @click="similarDialogVisible = false">
+          <span>我知道了</span>
+          <strong>→</strong>
+        </button>
+      </div>
+    </template>
+  </el-dialog>
+
+  <el-dialog
     v-model="deleteDialogVisible"
     class="studio-dialog studio-dialog-delete"
     modal-class="studio-dialog-overlay"
@@ -861,55 +2140,138 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import ExamMappingPanel from '../../components/dashboard/ExamMappingPanel.vue'
 import { login, register } from '../../api/auth'
 import {
   createChapter,
   createCourse,
+  createCourseRelation,
   deleteChapter,
   deleteCourse,
+  deleteCourseRelation,
+  getCourseStats,
   listChapters,
   listCourses,
+  listCourseRelations,
   updateChapter,
   updateCourse
 } from '../../api/course'
 import {
   deleteMaterial,
+  generateMaterialSummary,
+  listSimilarMaterials,
   listMaterials,
   listTextChunks,
   parsePdf,
   updateMaterial,
-  uploadMaterial
+  uploadMaterialsBatch
 } from '../../api/material'
-import { searchMaterials } from '../../api/search'
+import { listSearchRecords, searchMaterials } from '../../api/search'
 import {
   deleteKnowledgeItem,
   generateKnowledgeItems,
+  updateKnowledgeMastery,
   listCourseTags,
   listKnowledgeItems,
   listMaterialTags,
+  previewMaterialTags,
   replaceMaterialTags
 } from '../../api/knowledge'
+import {
+  createExport,
+  exportDownloadUrl,
+  listExportRecords,
+  listExportTemplates,
+  markExportRecommended,
+  previewExport
+} from '../../api/export'
+import {
+  createKnowledgeGapReport,
+  getKnowledgeRemediationPath,
+  listKnowledgeGapItems,
+  listKnowledgeGapReports,
+  listPrerequisiteGapHints
+} from '../../api/gap'
+import {
+  analyzeTeacherProfile,
+  listTeacherProfileEvidence,
+  listTeacherProfiles,
+  recalculateTeacherProfileConfidence,
+  reanalyzeTeacherProfile,
+  updateTeacherProfile
+} from '../../api/teacher'
+import {
+  generateMockExam,
+  mockExamDownloadUrl
+} from '../../api/mockExam'
+import {
+  generateSprintOutline,
+  sprintOutlineDownloadUrl
+} from '../../api/sprintOutline'
+import {
+  createReviewProfile,
+  deleteReviewProfile,
+  listReviewProfiles,
+  updateReviewProfile
+} from '../../api/review'
+import {
+  createAiProvider,
+  deleteAiProvider,
+  getAiStatus,
+  listAiGenerationTasks,
+  listAiProviders,
+  updateAiProvider
+} from '../../api/ai'
 
 const currentUser = ref(null)
 const authMode = ref('login')
 const authLoading = ref(false)
 const courseLoading = ref(false)
+const courseStatsLoading = ref(false)
 const chapterLoading = ref(false)
 const materialLoading = ref(false)
 const searchLoading = ref(false)
+const searchRecordLoading = ref(false)
 const searchHasRun = ref(false)
+const relationLoading = ref(false)
+const relationSaving = ref(false)
 const knowledgeLoading = ref(false)
 const knowledgeGenerating = ref(false)
+const gapLoading = ref(false)
+const gapGenerating = ref(false)
+const gapItemLoading = ref(false)
+const prerequisiteGapLoading = ref(false)
+const remediationPathLoading = ref(false)
+const teacherProfileLoading = ref(false)
+const teacherProfileAnalyzing = ref(false)
+const teacherEvidenceLoading = ref(false)
+const teacherProfileEditing = ref(false)
+const teacherProfileSaving = ref(false)
+const teacherConfidenceScoring = ref(false)
+const teacherProfileReanalyzing = ref(false)
+const mockExamGenerating = ref(false)
+const sprintOutlineGenerating = ref(false)
+const reviewProfileLoading = ref(false)
+const reviewProfileSaving = ref(false)
+const aiProviderLoading = ref(false)
+const aiProviderSaving = ref(false)
+const aiTaskLoading = ref(false)
 const tagSaving = ref(false)
+const tagPreviewLoading = ref(false)
+const exportLoading = ref(false)
+const exportCreating = ref(false)
+const exportPreviewLoading = ref(false)
 const courseSaving = ref(false)
 const chapterSaving = ref(false)
 const materialSaving = ref(false)
 const parsingMaterialId = ref(null)
+const summaryGeneratingIds = ref([])
 const textChunkLoading = ref(false)
 const courseDialogVisible = ref(false)
 const chapterDialogVisible = ref(false)
 const materialDialogVisible = ref(false)
 const textPreviewVisible = ref(false)
+const similarDialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const deleteLoading = ref(false)
 const deleteTarget = ref(null)
@@ -919,24 +2281,60 @@ const editingMaterialId = ref(null)
 const courses = ref([])
 const chapters = ref([])
 const materials = ref([])
+const courseRelations = ref([])
+const courseStats = ref(null)
 const searchResults = ref([])
+const searchRecords = ref([])
 const knowledgeItems = ref([])
+const gapReports = ref([])
+const gapItems = ref([])
+const prerequisiteGapHints = ref([])
+const remediationPath = ref(null)
+const teacherProfiles = ref([])
+const teacherProfileEvidence = ref([])
+const mockExamResult = ref(null)
+const sprintOutlineResult = ref(null)
+const reviewProfiles = ref([])
+const aiProviders = ref([])
+const aiGenerationTasks = ref([])
+const aiDefaultStatus = ref(null)
 const courseTags = ref([])
+const exportTemplates = ref([])
+const exportRecords = ref([])
+const exportPreview = ref(null)
+const masterySavingIds = ref([])
 const selectedMaterialTags = ref([])
+const previewedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
-const selectedFile = ref(null)
+const selectedGapReport = ref(null)
+const selectedTeacherProfile = ref(null)
+const editingReviewProfileId = ref(null)
+const editingAiProviderId = ref(null)
+const uploadFileList = ref([])
+const uploadDrafts = ref([])
 const materialUploadRef = ref(null)
 const previewMaterial = ref(null)
+const similarSourceMaterial = ref(null)
+const similarMaterialResults = ref([])
 const textChunks = ref([])
 const activeSection = ref('overview')
+const examPreferredMaterialId = ref(null)
 
 const pageSections = [
-  { id: 'overview', label: 'overview.', title: '课程概览' },
-  { id: 'chapters', label: 'chapters.', title: '章节路径' },
-  { id: 'materials', label: 'materials.', title: '课程资料' },
-  { id: 'search', label: 'search.', title: '课程检索' },
-  { id: 'knowledge', label: 'knowledge.', title: '知识条目' }
+  { id: 'overview', label: '概览', title: '课程概览' },
+  { id: 'relations', label: '关系', title: '课程关系' },
+  { id: 'chapters', label: '章节', title: '章节路径' },
+  { id: 'materials', label: '资料', title: '课程资料' },
+  { id: 'search', label: '检索', title: '课程检索' },
+  { id: 'knowledge', label: '知识', title: '知识条目' },
+  { id: 'gaps', label: '缺口', title: '知识缺口' },
+  { id: 'teacher', label: '画像', title: '教师画像' },
+  { id: 'review', label: '复习', title: '复习配置' },
+  { id: 'ai-config', label: 'AI', title: 'AI 配置' },
+  { id: 'ai-tasks', label: '任务', title: 'AI 任务记录' },
+  { id: 'exam', label: '真题', title: '真题映射' },
+  { id: 'export', label: '导出', title: '知识包导出' }
 ]
 
 const materialTypeOptions = [
@@ -953,6 +2351,36 @@ const materialGroups = computed(() => materialTypeOptions.map(group => ({
   items: materials.value.filter(material => material.materialType === group.type)
 })))
 
+const aiTaskStats = computed(() => ({
+  total: aiGenerationTasks.value.length,
+  running: aiGenerationTasks.value.filter(task => task.status === 'RUNNING' || task.status === 'PENDING').length,
+  failed: aiGenerationTasks.value.filter(task => task.status === 'FAILED').length
+}))
+
+const overviewStats = computed(() => ({
+  materialCount: courseStats.value?.materialCount ?? materials.value.length,
+  parsedMaterialCount: courseStats.value?.parsedMaterialCount
+    ?? materials.value.filter(item => item.parsedChunkCount > 0).length,
+  knowledgeItemCount: courseStats.value?.knowledgeItemCount ?? knowledgeItems.value.length,
+  examQuestionCount: courseStats.value?.examQuestionCount ?? 0,
+  examMappingCount: courseStats.value?.examMappingCount ?? 0,
+  exportCount: courseStats.value?.exportCount ?? exportRecords.value.length
+}))
+
+const materialTypeDistribution = computed(() => {
+  const stats = courseStats.value?.materialTypeStats || []
+  return materialTypeOptions.map(option => {
+    const match = stats.find(item => item.materialType === option.type)
+    const count = match?.count || 0
+    const total = overviewStats.value.materialCount || 0
+    return {
+      ...option,
+      count,
+      percent: total > 0 ? Math.round((count / total) * 100) : 0
+    }
+  })
+})
+
 const parsedMaterials = computed(() => materials.value.filter(
   material => material.parsedChunkCount > 0
 ))
@@ -965,6 +2393,66 @@ const knowledgeTypeOptions = [
   { type: 'EXAMPLE', label: '例子' },
   { type: 'WARNING', label: '易错点' }
 ]
+
+const masteryStatusOptions = [
+  { status: 'UNKNOWN', label: '未评估' },
+  { status: 'LEARNING', label: '学习中' },
+  { status: 'MASTERED', label: '已掌握' }
+]
+
+const reviewDifficultyOptions = [
+  { value: 'EASY', label: '基础' },
+  { value: 'MEDIUM', label: '标准' },
+  { value: 'MEDIUM_HARD', label: '偏难' },
+  { value: 'HARD', label: '冲刺' }
+]
+
+const reviewOutputOptions = [
+  { value: 'REVIEW_NOTE', label: '复习笔记' },
+  { value: 'OUTLINE', label: '复习提纲' },
+  { value: 'FLASHCARDS', label: '记忆卡片' },
+  { value: 'MOCK_EXAM', label: '模拟题' },
+  { value: 'CHECKLIST', label: '检查清单' }
+]
+
+const relationTypeOptions = [
+  { type: 'PREREQUISITE', label: '前置课程', exportField: 'includePrerequisiteCourses' },
+  { type: 'RELATED', label: '关联课程', exportField: 'includeRelatedCourses' },
+  { type: 'FOLLOW_UP', label: '后续课程', exportField: 'includeFollowUpCourses' }
+]
+
+const relationCandidateCourses = computed(() => {
+  const relatedIds = new Set(courseRelations.value.map(item => item.relatedCourseId))
+  return courses.value.filter(course => (
+    selectedCourse.value
+    && course.id !== selectedCourse.value.id
+    && !relatedIds.has(course.id)
+  ))
+})
+
+const relationGroups = computed(() => relationTypeOptions.map(option => ({
+  ...option,
+  items: courseRelations.value.filter(item => item.relationType === option.type)
+})))
+
+const exportRelationOptions = computed(() => relationTypeOptions.map(option => ({
+  ...option,
+  count: courseRelations.value.filter(item => item.relationType === option.type).length
+})))
+
+const gapStats = computed(() => ({
+  total: gapItems.value.length,
+  severe: gapItems.value.filter(item => item.severityLevel >= 4).length,
+  prerequisite: gapItems.value.filter(item => item.relatedCourseRelationId).length
+}))
+
+const prerequisiteRelationCount = computed(() => (
+  courseRelations.value.filter(item => item.relationType === 'PREREQUISITE').length
+))
+
+const teacherProfileMaterials = computed(() => materials.value.filter(material => (
+  material.parsedChunkCount > 0 || material.materialType === 'EXAM'
+)))
 
 const deleteDialogTitle = computed(() => {
   if (deleteTarget.value?.type === 'course') return '删除这门课程'
@@ -1021,10 +2509,78 @@ const searchForm = reactive({
   isKey: false
 })
 
+const relationForm = reactive({
+  relatedCourseId: null,
+  relationType: 'PREREQUISITE',
+  reason: ''
+})
+
 const knowledgeForm = reactive({
   materialId: null,
   maxItems: 12,
   replaceExisting: false
+})
+
+const gapForm = reactive({
+  reportName: '',
+  includePrerequisites: true
+})
+
+const teacherProfileForm = reactive({
+  teacherName: '',
+  materialIds: []
+})
+
+const mockExamForm = reactive({
+  questionCount: 8,
+  difficultyLevel: 'MEDIUM',
+  customRequirement: ''
+})
+
+const sprintOutlineForm = reactive({
+  days: 7,
+  customRequirement: ''
+})
+
+const teacherEditForm = reactive({
+  teacherName: '',
+  confidenceScore: 50,
+  examStyle: '',
+  questionPreference: '',
+  gradingPreference: '',
+  focusTopics: '',
+  avoidTopics: '',
+  sourceSummary: ''
+})
+
+const reviewProfileForm = reactive({
+  profileName: '',
+  target: '',
+  difficultyLevel: 'MEDIUM',
+  outputType: 'REVIEW_NOTE',
+  includePrerequisites: true,
+  teacherProfileId: null,
+  customRequirement: ''
+})
+
+const aiProviderForm = reactive({
+  providerName: 'DeepSeek',
+  baseUrl: 'https://api.deepseek.com',
+  modelName: 'deepseek-v4-flash',
+  apiKeyAlias: 'DEEPSEEK_API_KEY',
+  enabled: true
+})
+
+const exportForm = reactive({
+  exportName: '',
+  templateId: null,
+  chapterIds: [],
+  materialTypes: [],
+  onlyKeyMaterials: false,
+  includeExamStats: true,
+  includePrerequisiteCourses: false,
+  includeRelatedCourses: false,
+  includeFollowUpCourses: false
 })
 
 onMounted(() => {
@@ -1076,6 +2632,13 @@ async function loadCourses() {
       selectedCourse.value = null
       chapters.value = []
       materials.value = []
+      courseRelations.value = []
+      courseStats.value = null
+      searchRecords.value = []
+      clearGapState()
+      clearTeacherProfileState()
+      clearReviewProfileState()
+      clearAiProviderState()
     }
   } catch (error) {
     ElMessage.error(error.message)
@@ -1087,26 +2650,664 @@ async function loadCourses() {
 async function selectCourse(course) {
   selectedCourse.value = course
   activeSection.value = 'overview'
+  examPreferredMaterialId.value = null
+  resetRelationForm()
+  resetGapForm()
+  resetTeacherProfileForm()
+  resetReviewProfileForm()
+  resetAiProviderForm()
   resetSearch()
   knowledgeForm.materialId = null
   selectedMaterialTags.value = []
+  previewedMaterialTags.value = []
   knowledgeFilterType.value = null
   chapterLoading.value = true
   materialLoading.value = true
   try {
-    const [chapterData, materialData] = await Promise.all([
+    const [chapterData, materialData, relationData] = await Promise.all([
       listChapters(course.id, currentUser.value.id),
-      listMaterials(course.id, currentUser.value.id)
+      listMaterials(course.id, currentUser.value.id),
+      listCourseRelations(course.id, currentUser.value.id)
     ])
     chapters.value = chapterData
     materials.value = materialData
-    await Promise.all([loadKnowledgeItems(), loadCourseTags()])
+    courseRelations.value = relationData
+    resetExportForm()
+    await Promise.all([
+      loadKnowledgeItems(),
+      loadCourseStats(),
+      loadCourseTags(),
+      loadSearchRecords(),
+      loadExportData(),
+      loadGapReports(),
+      loadPrerequisiteGapHints(),
+      loadTeacherProfiles(),
+      loadReviewProfiles(),
+      loadAiProviders(),
+      loadAiGenerationTasks()
+    ])
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     chapterLoading.value = false
     materialLoading.value = false
   }
+}
+
+async function loadCourseRelations() {
+  if (!selectedCourse.value) return
+  relationLoading.value = true
+  try {
+    courseRelations.value = await listCourseRelations(selectedCourse.value.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    relationLoading.value = false
+  }
+}
+
+async function loadCourseStats() {
+  if (!selectedCourse.value || !currentUser.value) return
+  courseStatsLoading.value = true
+  try {
+    courseStats.value = await getCourseStats(selectedCourse.value.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    courseStatsLoading.value = false
+  }
+}
+
+async function loadSearchRecords() {
+  if (!selectedCourse.value || !currentUser.value) return
+  searchRecordLoading.value = true
+  try {
+    searchRecords.value = await listSearchRecords(currentUser.value.id, selectedCourse.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    searchRecordLoading.value = false
+  }
+}
+
+async function saveRelation() {
+  if (!relationForm.relatedCourseId) {
+    ElMessage.warning('请选择关联课程')
+    return
+  }
+  relationSaving.value = true
+  try {
+    const relation = await createCourseRelation(
+      selectedCourse.value.id,
+      currentUser.value.id,
+      {
+        relatedCourseId: relationForm.relatedCourseId,
+        relationType: relationForm.relationType,
+        reason: relationForm.reason.trim() || null,
+        sortOrder: courseRelations.value.length
+      }
+    )
+    courseRelations.value.push(relation)
+    await loadPrerequisiteGapHints()
+    resetRelationForm()
+    ElMessage.success('课程关系已添加')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    relationSaving.value = false
+  }
+}
+
+async function removeRelation(relation) {
+  try {
+    await deleteCourseRelation(relation.id, currentUser.value.id)
+    courseRelations.value = courseRelations.value.filter(item => item.id !== relation.id)
+    await loadPrerequisiteGapHints()
+    ElMessage.success('课程关系已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function loadExportData() {
+  if (!selectedCourse.value || !currentUser.value) return
+  exportLoading.value = true
+  try {
+    const [templates, records] = await Promise.all([
+      listExportTemplates(),
+      listExportRecords(currentUser.value.id, selectedCourse.value.id)
+    ])
+    exportTemplates.value = templates
+    exportRecords.value = records
+    if (!exportForm.templateId && templates.length > 0) {
+      exportForm.templateId = templates[0].id
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+async function loadGapReports() {
+  if (!selectedCourse.value || !currentUser.value) return
+  gapLoading.value = true
+  try {
+    gapReports.value = await listKnowledgeGapReports(selectedCourse.value.id, currentUser.value.id)
+    if (gapReports.value.length > 0) {
+      await selectGapReport(gapReports.value[0])
+    } else {
+      selectedGapReport.value = null
+      gapItems.value = []
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapLoading.value = false
+  }
+}
+
+async function loadPrerequisiteGapHints() {
+  if (!selectedCourse.value || !currentUser.value) return
+  prerequisiteGapLoading.value = true
+  try {
+    prerequisiteGapHints.value = await listPrerequisiteGapHints(
+      selectedCourse.value.id,
+      currentUser.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    prerequisiteGapLoading.value = false
+  }
+}
+
+async function generateGapReport() {
+  if (!selectedCourse.value || !currentUser.value) return
+  gapGenerating.value = true
+  try {
+    const report = await createKnowledgeGapReport(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      reportName: gapForm.reportName.trim() || null,
+      includePrerequisites: gapForm.includePrerequisites
+    })
+    gapReports.value = [report, ...gapReports.value.filter(item => item.id !== report.id)]
+    await selectGapReport(report)
+    resetGapForm()
+    ElMessage.success('知识缺口报告已生成')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapGenerating.value = false
+  }
+}
+
+async function selectGapReport(report) {
+  selectedGapReport.value = report
+  remediationPath.value = null
+  gapItemLoading.value = true
+  try {
+    gapItems.value = await listKnowledgeGapItems(report.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    gapItemLoading.value = false
+  }
+}
+
+async function loadRemediationPath() {
+  if (!selectedGapReport.value || !currentUser.value) return
+  remediationPathLoading.value = true
+  try {
+    remediationPath.value = await getKnowledgeRemediationPath(
+      selectedGapReport.value.id,
+      currentUser.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    remediationPathLoading.value = false
+  }
+}
+
+async function loadTeacherProfiles() {
+  if (!selectedCourse.value || !currentUser.value) return
+  teacherProfileLoading.value = true
+  try {
+    teacherProfiles.value = await listTeacherProfiles(selectedCourse.value.id, currentUser.value.id)
+    if (teacherProfiles.value.length > 0) {
+      await selectTeacherProfile(teacherProfiles.value[0])
+    } else {
+      selectedTeacherProfile.value = null
+      teacherProfileEvidence.value = []
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileLoading.value = false
+  }
+}
+
+async function runTeacherProfileAnalysis() {
+  if (!selectedCourse.value || !currentUser.value) return
+  if (!teacherProfileForm.teacherName.trim()) {
+    ElMessage.warning('请输入教师名称')
+    return
+  }
+  teacherProfileAnalyzing.value = true
+  try {
+    const profile = await analyzeTeacherProfile(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherName: teacherProfileForm.teacherName.trim(),
+      materialIds: teacherProfileForm.materialIds
+    })
+    teacherProfiles.value = [profile, ...teacherProfiles.value.filter(item => item.id !== profile.id)]
+    await selectTeacherProfile(profile)
+    resetTeacherProfileForm()
+    ElMessage.success('教师画像分析完成')
+  } catch (error) {
+    await loadTeacherProfiles()
+    ElMessage.error(error.message)
+  } finally {
+    await loadAiGenerationTasks()
+    teacherProfileAnalyzing.value = false
+  }
+}
+
+async function selectTeacherProfile(profile) {
+  selectedTeacherProfile.value = profile
+  teacherProfileEditing.value = false
+  mockExamResult.value = null
+  sprintOutlineResult.value = null
+  teacherEvidenceLoading.value = true
+  try {
+    teacherProfileEvidence.value = await listTeacherProfileEvidence(profile.id, currentUser.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherEvidenceLoading.value = false
+  }
+}
+
+async function recalculateTeacherConfidence() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  teacherConfidenceScoring.value = true
+  try {
+    const profile = await recalculateTeacherProfileConfidence(
+      selectedTeacherProfile.value.id,
+      currentUser.value.id
+    )
+    replaceItem(teacherProfiles.value, profile)
+    selectedTeacherProfile.value = profile
+    ElMessage.success('教师画像置信度已更新')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherConfidenceScoring.value = false
+  }
+}
+
+async function runTeacherProfileReanalysis() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  teacherProfileReanalyzing.value = true
+  try {
+    const profile = await reanalyzeTeacherProfile(selectedTeacherProfile.value.id, {
+      userId: currentUser.value.id,
+      materialIds: [],
+      model: 'deepseek-v4-flash'
+    })
+    replaceItem(teacherProfiles.value, profile)
+    await selectTeacherProfile(profile)
+    await loadAiGenerationTasks()
+    ElMessage.success('教师画像已重新分析')
+  } catch (error) {
+    await loadTeacherProfiles()
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileReanalyzing.value = false
+  }
+}
+
+async function generateMockExamFromProfile() {
+  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  mockExamGenerating.value = true
+  try {
+    const result = await generateMockExam(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherProfileId: selectedTeacherProfile.value.id,
+      questionCount: mockExamForm.questionCount,
+      difficultyLevel: mockExamForm.difficultyLevel,
+      model: 'deepseek-v4-flash',
+      customRequirement: mockExamForm.customRequirement.trim() || null
+    })
+    mockExamResult.value = result
+    await loadAiGenerationTasks()
+    ElMessage.success(`已生成 ${result.questionCount} 道模拟题`)
+  } catch (error) {
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    mockExamGenerating.value = false
+  }
+}
+
+function downloadMockExam(task) {
+  if (!task || !currentUser.value) return
+  window.open(mockExamDownloadUrl(task.id, currentUser.value.id), '_blank')
+}
+
+async function generateSprintOutlineFromProfile() {
+  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  sprintOutlineGenerating.value = true
+  try {
+    const result = await generateSprintOutline(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherProfileId: selectedTeacherProfile.value.id,
+      days: sprintOutlineForm.days,
+      model: 'deepseek-v4-flash',
+      customRequirement: sprintOutlineForm.customRequirement.trim() || null
+    })
+    sprintOutlineResult.value = result
+    await loadAiGenerationTasks()
+    ElMessage.success(`已生成 ${result.dayCount} 天冲刺提纲`)
+  } catch (error) {
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    sprintOutlineGenerating.value = false
+  }
+}
+
+function downloadSprintOutline(task) {
+  if (!task || !currentUser.value) return
+  window.open(sprintOutlineDownloadUrl(task.id, currentUser.value.id), '_blank')
+}
+
+async function loadReviewProfiles() {
+  if (!selectedCourse.value || !currentUser.value) return
+  reviewProfileLoading.value = true
+  try {
+    reviewProfiles.value = await listReviewProfiles(currentUser.value.id, selectedCourse.value.id)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    reviewProfileLoading.value = false
+  }
+}
+
+async function saveReviewProfile() {
+  if (!selectedCourse.value || !currentUser.value) return
+  if (!reviewProfileForm.profileName.trim()) {
+    ElMessage.warning('请输入配置名称')
+    return
+  }
+  reviewProfileSaving.value = true
+  try {
+    const payload = {
+      userId: currentUser.value.id,
+      courseId: selectedCourse.value.id,
+      teacherProfileId: reviewProfileForm.teacherProfileId,
+      profileName: reviewProfileForm.profileName.trim(),
+      target: reviewProfileForm.target.trim() || null,
+      difficultyLevel: reviewProfileForm.difficultyLevel,
+      outputType: reviewProfileForm.outputType,
+      includePrerequisites: reviewProfileForm.includePrerequisites,
+      customRequirement: reviewProfileForm.customRequirement.trim() || null
+    }
+    const saved = editingReviewProfileId.value
+      ? await updateReviewProfile(editingReviewProfileId.value, payload)
+      : await createReviewProfile(payload)
+    if (editingReviewProfileId.value) {
+      replaceItem(reviewProfiles.value, saved)
+    } else {
+      reviewProfiles.value.unshift(saved)
+    }
+    resetReviewProfileForm()
+    ElMessage.success('复习配置已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    reviewProfileSaving.value = false
+  }
+}
+
+function editReviewProfile(profile) {
+  editingReviewProfileId.value = profile.id
+  reviewProfileForm.profileName = profile.profileName || ''
+  reviewProfileForm.target = profile.target || ''
+  reviewProfileForm.difficultyLevel = profile.difficultyLevel || 'MEDIUM'
+  reviewProfileForm.outputType = profile.outputType || 'REVIEW_NOTE'
+  reviewProfileForm.includePrerequisites = profile.includePrerequisites !== false
+  reviewProfileForm.teacherProfileId = profile.teacherProfileId || null
+  reviewProfileForm.customRequirement = profile.customRequirement || ''
+}
+
+async function removeReviewProfile(profile) {
+  try {
+    await deleteReviewProfile(profile.id, currentUser.value.id)
+    reviewProfiles.value = reviewProfiles.value.filter(item => item.id !== profile.id)
+    if (editingReviewProfileId.value === profile.id) {
+      resetReviewProfileForm()
+    }
+    ElMessage.success('复习配置已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function loadAiProviders() {
+  if (!currentUser.value) return
+  aiProviderLoading.value = true
+  try {
+    const [status, providers] = await Promise.all([
+      getAiStatus(),
+      listAiProviders(currentUser.value.id)
+    ])
+    aiDefaultStatus.value = status
+    aiProviders.value = providers
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiProviderLoading.value = false
+  }
+}
+
+async function loadAiGenerationTasks() {
+  if (!currentUser.value || !selectedCourse.value) return
+  aiTaskLoading.value = true
+  try {
+    aiGenerationTasks.value = await listAiGenerationTasks(
+      currentUser.value.id,
+      selectedCourse.value.id
+    )
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiTaskLoading.value = false
+  }
+}
+
+async function saveAiProvider() {
+  if (!currentUser.value) return
+  if (!aiProviderForm.providerName.trim() || !aiProviderForm.baseUrl.trim() || !aiProviderForm.modelName.trim()) {
+    ElMessage.warning('请填写供应商名称、Base URL 和模型名称')
+    return
+  }
+  aiProviderSaving.value = true
+  try {
+    const payload = {
+      userId: currentUser.value.id,
+      providerName: aiProviderForm.providerName.trim(),
+      baseUrl: aiProviderForm.baseUrl.trim(),
+      modelName: aiProviderForm.modelName.trim(),
+      apiKeyAlias: aiProviderForm.apiKeyAlias.trim() || null,
+      enabled: aiProviderForm.enabled
+    }
+    const saved = editingAiProviderId.value
+      ? await updateAiProvider(editingAiProviderId.value, payload)
+      : await createAiProvider(payload)
+    if (editingAiProviderId.value) {
+      replaceItem(aiProviders.value, saved)
+    } else {
+      aiProviders.value.unshift(saved)
+    }
+    resetAiProviderForm()
+    ElMessage.success('AI 配置已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    aiProviderSaving.value = false
+  }
+}
+
+function editAiProvider(config) {
+  editingAiProviderId.value = config.id
+  aiProviderForm.providerName = config.providerName || ''
+  aiProviderForm.baseUrl = config.baseUrl || ''
+  aiProviderForm.modelName = config.modelName || ''
+  aiProviderForm.apiKeyAlias = config.apiKeyAlias || ''
+  aiProviderForm.enabled = config.enabled !== false
+}
+
+async function removeAiProvider(config) {
+  try {
+    await deleteAiProvider(config.id, currentUser.value.id)
+    aiProviders.value = aiProviders.value.filter(item => item.id !== config.id)
+    if (editingAiProviderId.value === config.id) {
+      resetAiProviderForm()
+    }
+    ElMessage.success('AI 配置已删除')
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+function openTeacherProfileEditor() {
+  if (!selectedTeacherProfile.value) return
+  teacherEditForm.teacherName = selectedTeacherProfile.value.teacherName || ''
+  teacherEditForm.confidenceScore = selectedTeacherProfile.value.confidenceScore ?? 50
+  teacherEditForm.examStyle = selectedTeacherProfile.value.examStyle || ''
+  teacherEditForm.questionPreference = selectedTeacherProfile.value.questionPreference || ''
+  teacherEditForm.gradingPreference = selectedTeacherProfile.value.gradingPreference || ''
+  teacherEditForm.focusTopics = selectedTeacherProfile.value.focusTopics || ''
+  teacherEditForm.avoidTopics = selectedTeacherProfile.value.avoidTopics || ''
+  teacherEditForm.sourceSummary = selectedTeacherProfile.value.sourceSummary || ''
+  teacherProfileEditing.value = true
+}
+
+function cancelTeacherProfileEdit() {
+  teacherProfileEditing.value = false
+}
+
+async function saveTeacherProfileEdit() {
+  if (!selectedTeacherProfile.value || !currentUser.value) return
+  if (!teacherEditForm.teacherName.trim()) {
+    ElMessage.warning('请输入教师名称')
+    return
+  }
+  teacherProfileSaving.value = true
+  try {
+    const profile = await updateTeacherProfile(selectedTeacherProfile.value.id, {
+      userId: currentUser.value.id,
+      teacherName: teacherEditForm.teacherName.trim(),
+      confidenceScore: teacherEditForm.confidenceScore,
+      examStyle: teacherEditForm.examStyle,
+      questionPreference: teacherEditForm.questionPreference,
+      gradingPreference: teacherEditForm.gradingPreference,
+      focusTopics: teacherEditForm.focusTopics,
+      avoidTopics: teacherEditForm.avoidTopics,
+      sourceSummary: teacherEditForm.sourceSummary,
+      analysisStatus: 'MANUAL_REVIEWED'
+    })
+    replaceItem(teacherProfiles.value, profile)
+    selectedTeacherProfile.value = profile
+    teacherProfileEditing.value = false
+    ElMessage.success('教师画像已保存')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    teacherProfileSaving.value = false
+  }
+}
+
+async function runExport() {
+  const payload = buildExportPayload()
+  if (!payload) return
+  exportCreating.value = true
+  try {
+    const record = await createExport(payload)
+    exportRecords.value.unshift(record)
+    exportPreview.value = null
+    await loadCourseStats()
+    ElMessage.success('知识包已生成')
+    downloadExport(record)
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportCreating.value = false
+  }
+}
+
+async function runExportPreview() {
+  const payload = buildExportPayload()
+  if (!payload) return
+  exportPreviewLoading.value = true
+  try {
+    exportPreview.value = await previewExport(payload)
+    ElMessage.success('导出预览已生成')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exportPreviewLoading.value = false
+  }
+}
+
+function buildExportPayload() {
+  if (!selectedCourse.value || !currentUser.value) return null
+  if (!exportForm.exportName.trim()) {
+    ElMessage.warning('请输入导出名称')
+    return null
+  }
+  return {
+    userId: currentUser.value.id,
+    courseId: selectedCourse.value.id,
+    templateId: exportForm.templateId,
+    exportName: exportForm.exportName.trim(),
+    exportFormat: 'ZIP',
+    chapterIds: exportForm.chapterIds,
+    materialTypes: exportForm.materialTypes,
+    onlyKeyMaterials: exportForm.onlyKeyMaterials,
+    includeExamStats: exportForm.includeExamStats,
+    includePrerequisiteCourses: exportForm.includePrerequisiteCourses
+      && hasCourseRelationsOfType('PREREQUISITE'),
+    includeRelatedCourses: exportForm.includeRelatedCourses
+      && hasCourseRelationsOfType('RELATED'),
+    includeFollowUpCourses: exportForm.includeFollowUpCourses
+      && hasCourseRelationsOfType('FOLLOW_UP')
+  }
+}
+
+function downloadExport(record) {
+  window.open(exportDownloadUrl(record.id, currentUser.value.id), '_blank')
+}
+
+async function setRecommendedExport(record) {
+  try {
+    const updated = await markExportRecommended(record.id, currentUser.value.id)
+    exportRecords.value = exportRecords.value.map(item => ({
+      ...item,
+      recommended: item.id === updated.id
+    }))
+    ElMessage.success(`v${updated.versionNo || 1} 已设为推荐版本`)
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+function formatExportTime(value) {
+  if (!value) return '刚刚'
+  return new Date(value).toLocaleString()
 }
 
 async function loadKnowledgeItems() {
@@ -1137,6 +3338,7 @@ async function loadCourseTags() {
 }
 
 async function loadSelectedMaterialTags() {
+  previewedMaterialTags.value = []
   if (!knowledgeForm.materialId) {
     selectedMaterialTags.value = []
     return
@@ -1169,6 +3371,46 @@ async function saveSelectedMaterialTags() {
   }
 }
 
+async function previewTags() {
+  if (!knowledgeForm.materialId) return
+  tagPreviewLoading.value = true
+  try {
+    const result = await previewMaterialTags(
+      knowledgeForm.materialId,
+      currentUser.value.id,
+      { model: 'deepseek-v4-flash' }
+    )
+    previewedMaterialTags.value = result.tags || []
+    selectedMaterialTags.value = Array.from(new Set([
+      ...selectedMaterialTags.value,
+      ...previewedMaterialTags.value
+    ]))
+    await loadAiGenerationTasks()
+    if (previewedMaterialTags.value.length === 0) {
+      ElMessage.warning('AI 未提取到有效关键词')
+    } else {
+      ElMessage.success(`已提取 ${previewedMaterialTags.value.length} 个候选关键词`)
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    tagPreviewLoading.value = false
+  }
+}
+
+function togglePreviewTag(tag) {
+  if (selectedMaterialTags.value.includes(tag)) {
+    selectedMaterialTags.value = selectedMaterialTags.value.filter(item => item !== tag)
+  } else {
+    selectedMaterialTags.value = [...selectedMaterialTags.value, tag]
+  }
+}
+
+async function applyPreviewTags() {
+  if (!knowledgeForm.materialId || previewedMaterialTags.value.length === 0) return
+  await saveSelectedMaterialTags()
+}
+
 async function generateKnowledge() {
   if (!knowledgeForm.materialId) {
     ElMessage.warning('请选择已解析资料')
@@ -1187,12 +3429,55 @@ async function generateKnowledge() {
     )
     selectedMaterialTags.value = result.tags
     await Promise.all([loadKnowledgeItems(), loadCourseTags()])
+    await loadCourseStats()
     ElMessage.success(`AI 已整理 ${result.items.length} 条知识`)
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
+    await loadAiGenerationTasks()
     knowledgeGenerating.value = false
   }
+}
+
+async function saveKnowledgeMastery(item, masteryStatus) {
+  if (!currentUser.value || !item?.id) return
+  if ((item.masteryStatus || 'UNKNOWN') === masteryStatus) return
+  masterySavingIds.value = [...new Set([...masterySavingIds.value, item.id])]
+  try {
+    const status = await updateKnowledgeMastery(item.id, {
+      userId: currentUser.value.id,
+      masteryStatus: masteryStatus || 'UNKNOWN',
+      masteryScore: null,
+      note: null
+    })
+    item.masteryStatus = status.masteryStatus
+    item.masteryScore = status.masteryScore
+    item.masteryNote = status.note
+    item.lastReviewTime = status.lastReviewTime
+    item.masteryUpdateTime = status.updateTime
+    ElMessage.success('???????')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    masterySavingIds.value = masterySavingIds.value.filter(id => id !== item.id)
+  }
+}
+
+function isMasterySaving(itemId) {
+  return masterySavingIds.value.includes(itemId)
+}
+
+function formatReviewTime(value) {
+  return value ? new Date(value).toLocaleString() : '尚未复习'
+}
+
+function formatSearchTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
+}
+
+function searchTypeLabel(type) {
+  if (type === 'UNIFIED_KNOWLEDGE') return '统一检索'
+  return type || '检索'
 }
 
 function knowledgeTypeLabel(type) {
@@ -1215,6 +3500,7 @@ async function runSearch() {
       isKey: searchForm.isKey
     })
     searchHasRun.value = true
+    await loadSearchRecords()
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -1231,8 +3517,184 @@ function resetSearch() {
   searchHasRun.value = false
 }
 
+async function rerunSearchRecord(record) {
+  if (!record?.keyword) return
+  searchForm.keyword = record.keyword
+  await runSearch()
+}
+
+function resetRelationForm() {
+  relationForm.relatedCourseId = null
+  relationForm.relationType = 'PREREQUISITE'
+  relationForm.reason = ''
+}
+
+function resetGapForm() {
+  gapForm.reportName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 知识缺口报告`
+    : ''
+  gapForm.includePrerequisites = true
+}
+
+function clearGapState() {
+  gapReports.value = []
+  gapItems.value = []
+  prerequisiteGapHints.value = []
+  remediationPath.value = null
+  selectedGapReport.value = null
+  resetGapForm()
+}
+
+function resetTeacherProfileForm() {
+  teacherProfileForm.teacherName = ''
+  teacherProfileForm.materialIds = []
+}
+
+function resetMockExamForm() {
+  mockExamForm.questionCount = 8
+  mockExamForm.difficultyLevel = 'MEDIUM'
+  mockExamForm.customRequirement = ''
+  mockExamResult.value = null
+}
+
+function resetSprintOutlineForm() {
+  sprintOutlineForm.days = 7
+  sprintOutlineForm.customRequirement = ''
+  sprintOutlineResult.value = null
+}
+
+function clearTeacherProfileState() {
+  teacherProfiles.value = []
+  teacherProfileEvidence.value = []
+  selectedTeacherProfile.value = null
+  resetTeacherProfileForm()
+  resetMockExamForm()
+  resetSprintOutlineForm()
+}
+
+function resetReviewProfileForm() {
+  editingReviewProfileId.value = null
+  reviewProfileForm.profileName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 复习配置`
+    : ''
+  reviewProfileForm.target = ''
+  reviewProfileForm.difficultyLevel = 'MEDIUM'
+  reviewProfileForm.outputType = 'REVIEW_NOTE'
+  reviewProfileForm.includePrerequisites = true
+  reviewProfileForm.teacherProfileId = null
+  reviewProfileForm.customRequirement = ''
+}
+
+function clearReviewProfileState() {
+  reviewProfiles.value = []
+  resetReviewProfileForm()
+}
+
+function resetAiProviderForm() {
+  editingAiProviderId.value = null
+  aiProviderForm.providerName = 'DeepSeek'
+  aiProviderForm.baseUrl = 'https://api.deepseek.com'
+  aiProviderForm.modelName = 'deepseek-v4-flash'
+  aiProviderForm.apiKeyAlias = 'DEEPSEEK_API_KEY'
+  aiProviderForm.enabled = true
+}
+
+function clearAiProviderState() {
+  aiProviders.value = []
+  aiDefaultStatus.value = null
+  aiGenerationTasks.value = []
+  resetAiProviderForm()
+}
+
+function resetExportForm() {
+  exportForm.exportName = selectedCourse.value
+    ? `${selectedCourse.value.courseName} 知识包`
+    : ''
+  exportForm.templateId = exportTemplates.value[0]?.id || null
+  exportForm.chapterIds = []
+  exportForm.materialTypes = []
+  exportForm.onlyKeyMaterials = false
+  exportForm.includeExamStats = true
+  exportForm.includePrerequisiteCourses = false
+  exportForm.includeRelatedCourses = false
+  exportForm.includeFollowUpCourses = false
+  exportPreview.value = null
+}
+
+function hasCourseRelationsOfType(type) {
+  return courseRelations.value.some(relation => relation.relationType === type)
+}
+
 function materialTypeLabel(type) {
   return materialTypeOptions.find(option => option.type === type)?.label || type
+}
+
+function masteryStatusLabel(status) {
+  return masteryStatusOptions.find(option => option.status === status)?.label || '未评估'
+}
+
+function gapTypeLabel(type) {
+  if (type === 'WEAK_MASTERY') return '学习中'
+  if (type === 'HIGH_FREQUENCY') return '高频考点'
+  if (type === 'PREREQUISITE_GAP') return '前置缺口'
+  return '未评估'
+}
+
+function relationTypeLabel(type) {
+  return relationTypeOptions.find(option => option.type === type)?.label || '当前课程'
+}
+
+function formatGapTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
+}
+
+function teacherStatusLabel(status) {
+  if (status === 'RUNNING') return '分析中'
+  if (status === 'SUCCESS') return '已完成'
+  if (status === 'FAILED') return '失败'
+  if (status === 'MANUAL_REVIEWED') return '已人工确认'
+  return '等待分析'
+}
+
+function evidenceTypeLabel(type) {
+  if (type === 'QUESTION_TYPE') return '题型证据'
+  if (type === 'GRADING') return '评分证据'
+  if (type === 'FOCUS_TOPIC') return '重点证据'
+  if (type === 'AVOID_TOPIC') return '规避证据'
+  return '风格证据'
+}
+
+function reviewDifficultyLabel(value) {
+  return reviewDifficultyOptions.find(option => option.value === value)?.label || value
+}
+
+function reviewOutputLabel(value) {
+  return reviewOutputOptions.find(option => option.value === value)?.label || value
+}
+
+function aiTaskTypeLabel(type) {
+  if (type === 'TEACHER_PROFILE') return '教师画像分析'
+  if (type === 'EXAM_MAPPING') return '真题知识映射'
+  if (type === 'KNOWLEDGE_GAP') return '知识缺口检测'
+  if (type === 'REVIEW_GENERATION') return '复习资料生成'
+  if (type === 'MOCK_EXAM') return '模拟题生成'
+  if (type === 'PACKAGE_SUMMARY') return '知识包摘要'
+  if (type === 'KNOWLEDGE_EXTRACTION') return '资料知识整理'
+  if (type === 'MATERIAL_SUMMARY') return '资料摘要生成'
+  if (type === 'MATERIAL_TAG_EXTRACTION') return '资料关键词提取'
+  return type || '未知任务'
+}
+
+function aiTaskStatusLabel(status) {
+  if (status === 'RUNNING') return '运行中'
+  if (status === 'SUCCESS') return '成功'
+  if (status === 'FAILED') return '失败'
+  if (status === 'CANCELED') return '已取消'
+  return '等待中'
+}
+
+function formatAiTaskTime(value) {
+  return value ? new Date(value).toLocaleString() : '刚刚'
 }
 
 function matchSourceLabel(source) {
@@ -1273,25 +3735,26 @@ function openKnowledgeResult() {
   activeSection.value = 'knowledge'
 }
 
-function handleFileChange(uploadFile) {
-  selectedFile.value = uploadFile.raw
-  if (!materialForm.title && uploadFile.name) {
-    materialForm.title = uploadFile.name.replace(/\.[^.]+$/, '')
-  }
-}
-
-function handleFileRemove() {
-  selectedFile.value = null
-}
-
 async function saveMaterial() {
-  if (!editingMaterialId.value && !selectedFile.value) {
+  if (!editingMaterialId.value && uploadDrafts.value.length === 0) {
     ElMessage.warning('请选择资料文件')
     return
   }
-  if (!materialForm.title.trim()) {
+  if (editingMaterialId.value && !materialForm.title.trim()) {
     ElMessage.warning('请输入资料标题')
     return
+  }
+  if (!editingMaterialId.value) {
+    const missingTitle = uploadDrafts.value.find(draft => !draft.title.trim())
+    if (missingTitle) {
+      ElMessage.warning(`请填写「${missingTitle.name}」的资料标题`)
+      return
+    }
+    const missingFile = uploadDrafts.value.find(draft => !draft.file)
+    if (missingFile) {
+      ElMessage.warning(`请重新选择「${missingFile.name}」`)
+      return
+    }
   }
 
   materialSaving.value = true
@@ -1310,6 +3773,7 @@ async function saveMaterial() {
         }
       )
       replaceItem(materials.value, updated)
+      await loadCourseStats()
       materialDialogVisible.value = false
       ElMessage.success('资料信息已更新')
       return
@@ -1318,25 +3782,66 @@ async function saveMaterial() {
     const data = new FormData()
     data.append('userId', currentUser.value.id)
     data.append('courseId', selectedCourse.value.id)
-    data.append('title', materialForm.title.trim())
-    data.append('materialType', materialForm.materialType)
-    data.append('year', materialForm.year)
-    data.append('isKey', materialForm.isKey)
-    data.append('summary', materialForm.summary.trim())
-    data.append('file', selectedFile.value)
-    if (materialForm.chapterId) {
-      data.append('chapterId', materialForm.chapterId)
-    }
+    uploadDrafts.value.forEach(draft => {
+      data.append('files', draft.file)
+      data.append('titles', draft.title.trim())
+      data.append('materialTypes', draft.materialType)
+      data.append('chapterIds', draft.chapterId || '')
+      data.append('years', draft.year || '')
+      data.append('isKeys', draft.isKey)
+      data.append('summaries', draft.summary.trim())
+    })
 
-    const material = await uploadMaterial(data)
-    materials.value.unshift(material)
+    const uploadedMaterials = await uploadMaterialsBatch(data)
+    materials.value.unshift(...uploadedMaterials)
+    await loadCourseStats()
+    await checkSimilarMaterials(uploadedMaterials)
     resetMaterialForm()
     materialDialogVisible.value = false
-    ElMessage.success('资料上传成功')
+    ElMessage.success(`已上传 ${uploadedMaterials.length} 份资料`)
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     materialSaving.value = false
+  }
+}
+
+function handleFileChange(uploadFile, uploadFiles) {
+  syncUploadDrafts(uploadFiles)
+}
+
+function handleFileRemove(uploadFile, uploadFiles) {
+  syncUploadDrafts(uploadFiles)
+}
+
+function syncUploadDrafts(uploadFiles = []) {
+  uploadFileList.value = uploadFiles
+  const existingDrafts = new Map(uploadDrafts.value.map(draft => [draft.uid, draft]))
+  uploadDrafts.value = uploadFiles.map(uploadFile => {
+    const existing = existingDrafts.get(uploadFile.uid)
+    if (existing) {
+      existing.file = uploadFile.raw
+      existing.name = uploadFile.name
+      existing.size = uploadFile.size || uploadFile.raw?.size || 0
+      return existing
+    }
+    return createUploadDraft(uploadFile)
+  })
+}
+
+function createUploadDraft(uploadFile) {
+  const name = uploadFile.name || uploadFile.raw?.name || ''
+  return {
+    uid: uploadFile.uid,
+    file: uploadFile.raw,
+    name,
+    size: uploadFile.size || uploadFile.raw?.size || 0,
+    title: name.replace(/\.[^.]+$/, ''),
+    materialType: materialForm.materialType,
+    chapterId: materialForm.chapterId,
+    year: materialForm.year,
+    isKey: materialForm.isKey,
+    summary: materialForm.summary
   }
 }
 
@@ -1345,12 +3850,61 @@ async function runPdfParse(material) {
   try {
     const result = await parsePdf(material.id, currentUser.value.id)
     material.parsedChunkCount = result.chunkCount
+    await loadCourseStats()
+    await checkSimilarMaterials([material])
     ElMessage.success(`解析完成，共提取 ${result.chunkCount} 个文本块`)
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
     parsingMaterialId.value = null
   }
+}
+
+function isSummaryGenerating(materialId) {
+  return summaryGeneratingIds.value.includes(materialId)
+}
+
+async function runMaterialSummary(material) {
+  if (!material.parsedChunkCount) {
+    ElMessage.warning('请先解析资料文本')
+    return
+  }
+  summaryGeneratingIds.value.push(material.id)
+  try {
+    const updated = await generateMaterialSummary(
+      material.id,
+      currentUser.value.id,
+      { model: 'deepseek-v4-flash' }
+    )
+    replaceItem(materials.value, updated)
+    await loadAiGenerationTasks()
+    ElMessage.success('资料摘要已更新')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    summaryGeneratingIds.value = summaryGeneratingIds.value.filter(id => id !== material.id)
+  }
+}
+
+async function checkSimilarMaterials(sourceMaterials) {
+  for (const material of sourceMaterials) {
+    try {
+      const results = await listSimilarMaterials(material.id, currentUser.value.id)
+      if (results.length > 0) {
+        similarSourceMaterial.value = material
+        similarMaterialResults.value = results
+        similarDialogVisible.value = true
+        return
+      }
+    } catch (error) {
+      ElMessage.warning(`相似资料检测失败：${error.message}`)
+    }
+  }
+}
+
+function openSimilarMaterial(material) {
+  similarDialogVisible.value = false
+  openMaterialEditor(material)
 }
 
 async function showParsedText(material) {
@@ -1364,6 +3918,19 @@ async function showParsedText(material) {
   } finally {
     textChunkLoading.value = false
   }
+}
+
+function openExamWorkbench(material) {
+  examPreferredMaterialId.value = material.id
+  scrollToSection('exam')
+}
+
+function handleExamMaterialParsed({ materialId, chunkCount }) {
+  const target = materials.value.find(item => item.id === materialId)
+  if (target) {
+    target.parsedChunkCount = chunkCount
+  }
+  loadCourseStats()
 }
 
 async function saveCourse() {
@@ -1510,6 +4077,7 @@ async function removeKnowledgeItem(itemId) {
       currentUser.value.id
     )
     knowledgeItems.value = knowledgeItems.value.filter(item => item.id !== itemId)
+    await loadCourseStats()
     deleteDialogVisible.value = false
     ElMessage.success('知识条目已删除')
   } catch (error) {
@@ -1529,6 +4097,11 @@ async function removeCourse(courseId) {
       selectedCourse.value = null
       chapters.value = []
       materials.value = []
+      courseRelations.value = []
+      clearGapState()
+      clearTeacherProfileState()
+      clearReviewProfileState()
+      clearAiProviderState()
     }
     ElMessage.success('课程已删除')
   } catch (error) {
@@ -1557,6 +4130,7 @@ async function removeMaterial(materialId) {
   try {
     await deleteMaterial(materialId, currentUser.value.id)
     materials.value = materials.value.filter(item => item.id !== materialId)
+    await loadCourseStats()
     materialDialogVisible.value = false
     deleteDialogVisible.value = false
     ElMessage.success('资料已删除')
@@ -1575,7 +4149,14 @@ function logout() {
   courses.value = []
   chapters.value = []
   materials.value = []
+  courseRelations.value = []
+  courseStats.value = null
+  searchRecords.value = []
   selectedCourse.value = null
+  clearGapState()
+  clearTeacherProfileState()
+  clearReviewProfileState()
+  clearAiProviderState()
 }
 
 function openCourseCreator() {
@@ -1659,7 +4240,8 @@ function resetMaterialForm() {
   materialForm.year = new Date().getFullYear()
   materialForm.isKey = false
   materialForm.summary = ''
-  selectedFile.value = null
+  uploadFileList.value = []
+  uploadDrafts.value = []
 }
 
 function formatFileSize(size) {
@@ -2266,7 +4848,7 @@ button {
 
 .hero-stats > div {
   min-width: 150px;
-  padding: 20px;
+  padding: 15px 18px;
   border: 1px solid #111;
   background: rgba(255, 255, 255, 0.9);
 }
@@ -2277,7 +4859,7 @@ button {
 }
 
 .hero-stats strong {
-  font-size: 38px;
+  font-size: 34px;
   line-height: 1;
 }
 
@@ -2287,6 +4869,83 @@ button {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.course-type-distribution {
+  position: relative;
+  z-index: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.22fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 8px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transform: translateY(36px);
+  transition: opacity 0.7s 0.28s ease, transform 0.7s 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.type-distribution-heading {
+  display: grid;
+  align-content: center;
+  border-right: 1px solid #111;
+}
+
+.type-distribution-heading strong,
+.type-distribution-heading span {
+  display: block;
+}
+
+.type-distribution-heading strong {
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.type-distribution-heading span {
+  margin-top: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.type-distribution-list {
+  display: grid;
+  gap: 10px;
+}
+
+.type-distribution-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.type-distribution-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-distribution-row > div {
+  height: 9px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.type-distribution-row i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: #14cbea;
+}
+
+.type-distribution-row strong {
+  text-align: right;
 }
 
 .hero-orbit {
@@ -2318,10 +4977,176 @@ button {
 
 .course-hero.section-active .hero-copy,
 .course-hero.section-active .hero-stats,
+.course-hero.section-active .course-type-distribution,
 .course-hero.section-active .hero-orbit-one,
 .course-hero.section-active .hero-orbit-two {
   opacity: 1;
   transform: translate(0) rotate(0) scale(1);
+}
+
+.relation-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 96px;
+  background: #f5f3ef;
+}
+
+.relation-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.relation-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.relation-heading h2 span {
+  color: #ff3151;
+}
+
+.relation-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.relation-panel {
+  margin-top: 48px;
+  display: grid;
+  gap: 26px;
+}
+
+.relation-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px minmax(260px, 1.2fr) 140px;
+  gap: 12px;
+  align-items: end;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ff3151;
+}
+
+.relation-form label {
+  min-width: 0;
+}
+
+.relation-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+:deep(.relation-form .el-select),
+:deep(.relation-form .el-input) {
+  width: 100%;
+}
+
+:deep(.relation-form .el-select__wrapper),
+:deep(.relation-form .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.relation-form button {
+  min-height: 50px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.relation-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.relation-groups {
+  min-height: 260px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.relation-group {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.relation-group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.relation-group-heading strong {
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.relation-group-heading span {
+  color: #666;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.relation-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #111;
+  box-shadow: 6px 6px 0 #14cbea;
+}
+
+.relation-card strong {
+  display: block;
+  overflow: hidden;
+  font-size: 20px;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relation-card p,
+.relation-card small {
+  display: block;
+  margin: 8px 0 0;
+  color: #666;
+  line-height: 1.55;
+}
+
+.relation-card button {
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ff3151;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.relation-empty {
+  min-height: 110px;
+  display: grid;
+  place-content: center;
+  color: #777;
+  font-size: 13px;
 }
 
 .chapter-section {
@@ -2924,6 +5749,116 @@ button {
   color: #ff3151;
 }
 
+.search-history {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #111;
+}
+
+.search-history-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.search-history-heading strong,
+.search-history-heading span {
+  display: block;
+}
+
+.search-history-heading strong {
+  font-size: 34px;
+  letter-spacing: -0.05em;
+}
+
+.search-history-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.search-history-heading button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  background: #14cbea;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.search-history-list {
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.search-history-list button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 10px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #111;
+  background: #f9faf6;
+  color: #111;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-history-list button:hover {
+  background: #ffef5a;
+}
+
+.search-history-list strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-history-list span,
+.search-history-list small {
+  color: #666;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.search-history-list small {
+  grid-column: 1 / -1;
+}
+
+.search-history-empty {
+  min-height: 130px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.search-history-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.search-history-empty p {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
 .search-result-heading {
   display: flex;
   align-items: baseline;
@@ -3169,7 +6104,7 @@ button {
 
 .knowledge-tags-panel {
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr) 110px;
+  grid-template-columns: 170px minmax(0, 1fr) 110px 150px;
   gap: 14px;
   align-items: center;
   margin-top: 24px;
@@ -3196,6 +6131,47 @@ button {
   color: #111;
   font-weight: 850;
   cursor: pointer;
+}
+
+.knowledge-tags-panel button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.tag-preview-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #444;
+}
+
+.tag-preview-panel > div {
+  min-width: 160px;
+  margin-right: 6px;
+}
+
+.tag-preview-panel button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: #ad93ff;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+}
+
+.tag-preview-panel button.active {
+  background: #ad93ff;
+  color: #111;
+}
+
+.tag-preview-panel .tag-preview-apply {
+  margin-left: auto;
+  border-color: #fff;
+  background: #fff;
+  color: #111;
 }
 
 .knowledge-toolbar {
@@ -3300,6 +6276,107 @@ button {
   font-size: 10px;
 }
 
+.mastery-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+  border: 1px solid #fff;
+  background: #111;
+}
+
+.mastery-toggle button {
+  min-height: 38px;
+  border: 0;
+  border-right: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mastery-toggle button:last-child {
+  border-right: 0;
+}
+
+.mastery-toggle button.active {
+  background: #fff;
+  color: #111;
+}
+
+.mastery-toggle button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.knowledge-mastery {
+  display: none;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #444;
+  background: #111;
+}
+
+.knowledge-mastery-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 10px;
+}
+
+.knowledge-mastery label {
+  min-width: 0;
+}
+
+.knowledge-mastery label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #aaa;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+:deep(.knowledge-mastery .el-select),
+:deep(.knowledge-mastery .el-input-number) {
+  width: 100%;
+}
+
+:deep(.knowledge-mastery .el-select__wrapper),
+:deep(.knowledge-mastery .el-input__wrapper),
+:deep(.knowledge-mastery .el-textarea__inner) {
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.knowledge-mastery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.knowledge-mastery-actions span {
+  color: #999;
+  font-size: 10px;
+}
+
+.knowledge-mastery-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #111;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.knowledge-mastery-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .knowledge-card > button {
   display: block;
   margin: 16px 0 0 auto;
@@ -3328,6 +6405,2074 @@ button {
 }
 
 .knowledge-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.gap-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #111;
+  background: #f5f3ef;
+}
+
+.gap-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.gap-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.gap-heading h2 span {
+  color: #ff3151;
+}
+
+.gap-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.gap-generator {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 150px;
+  gap: 12px;
+  align-items: end;
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ff3151;
+}
+
+.gap-generator label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.gap-generator .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.gap-switch {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.gap-switch small {
+  color: #666;
+}
+
+.gap-generator button {
+  min-height: 50px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gap-generator button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.prerequisite-hint-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #0de0c0;
+}
+
+.prerequisite-hint-heading,
+.prerequisite-hint-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.prerequisite-hint-heading span,
+.prerequisite-hint-list span {
+  display: block;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.prerequisite-hint-heading strong {
+  color: #111;
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.prerequisite-hint-heading button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #0de0c0;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.prerequisite-hint-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.prerequisite-hint-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prerequisite-hint-list article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #f5f3ef;
+}
+
+.prerequisite-hint-list strong {
+  flex: 0 0 auto;
+  color: #ff3151;
+  font-size: 11px;
+}
+
+.prerequisite-hint-list h3 {
+  margin: 12px 0 8px;
+  overflow: hidden;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prerequisite-hint-list p,
+.prerequisite-hint-list small {
+  display: block;
+  margin: 0;
+  color: #444;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.prerequisite-hint-list small {
+  margin-top: 8px;
+  color: #777;
+}
+
+.prerequisite-hint-empty {
+  min-height: 92px;
+  display: grid;
+  place-content: center;
+  border: 1px dashed #777;
+  color: #666;
+  font-size: 13px;
+}
+
+.gap-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 22px;
+  margin-top: 50px;
+}
+
+.gap-report-list {
+  min-height: 360px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.gap-report-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.gap-report-heading strong {
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.gap-report-heading span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.gap-report-list > button {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #111;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gap-report-list > button.active {
+  background: #111;
+  color: #fff;
+}
+
+.gap-report-list > button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gap-report-list > button span {
+  color: #777;
+  font-size: 11px;
+}
+
+.gap-report-list > button.active span {
+  color: #ccc;
+}
+
+.gap-empty-list {
+  min-height: 170px;
+  display: grid;
+  place-content: center;
+  color: #777;
+  font-size: 13px;
+}
+
+.gap-detail {
+  min-height: 360px;
+}
+
+.gap-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gap-summary > div {
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.gap-summary span,
+.gap-summary strong {
+  display: block;
+}
+
+.gap-summary span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.gap-summary strong {
+  margin-top: 8px;
+  font-size: 38px;
+  letter-spacing: -0.06em;
+}
+
+.gap-report-summary {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #fff;
+  color: #333;
+  line-height: 1.7;
+}
+
+.remediation-path-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #14cbea;
+}
+
+.remediation-path-heading,
+.remediation-stage-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.remediation-path-heading span,
+.remediation-stage-list article > div span {
+  display: block;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.remediation-path-heading strong {
+  display: block;
+  color: #111;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.remediation-path-heading button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #14cbea;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.remediation-path-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.remediation-path-summary {
+  margin: 12px 0 0;
+  color: #444;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.remediation-stage-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.remediation-stage-list article {
+  padding: 14px;
+  border: 1px solid #111;
+  background: #f5f3ef;
+}
+
+.remediation-stage-list article > div strong {
+  color: #ff3151;
+  font-size: 11px;
+}
+
+.remediation-stage-list p {
+  margin: 9px 0;
+  color: #444;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.remediation-stage-list ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.remediation-stage-list li strong,
+.remediation-stage-list li span {
+  display: block;
+  font-size: 12px;
+}
+
+.remediation-stage-list li span {
+  margin-top: 3px;
+  color: #777;
+}
+
+.gap-item-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.gap-item-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 7px 7px 0 #111;
+}
+
+.gap-item-top,
+.gap-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gap-item-top {
+  justify-content: space-between;
+}
+
+.gap-item-top span,
+.gap-item-meta span {
+  padding: 4px 8px;
+  border: 1px solid #111;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.gap-item-top strong {
+  color: #ff3151;
+  font-size: 12px;
+}
+
+.gap-item-card h3 {
+  margin: 16px 0 12px;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.gap-item-card p {
+  margin: 14px 0 0;
+  color: #333;
+  line-height: 1.7;
+}
+
+.gap-item-card small {
+  display: block;
+  margin-top: 12px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.gap-empty-detail {
+  min-height: 360px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.gap-empty-detail strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.gap-empty-detail p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.teacher-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #111;
+}
+
+.teacher-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.teacher-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.teacher-heading h2 span {
+  color: #0de0c0;
+}
+
+.teacher-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.teacher-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+
+.teacher-control {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.teacher-form,
+.teacher-profile-list,
+.teacher-profile-detail {
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.teacher-form {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  box-shadow: 8px 8px 0 #0de0c0;
+}
+
+.teacher-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.teacher-form .el-select),
+:deep(.teacher-form .el-input) {
+  width: 100%;
+}
+
+:deep(.teacher-form .el-select__wrapper),
+:deep(.teacher-form .el-input__wrapper) {
+  min-height: 50px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.teacher-form button {
+  min-height: 48px;
+  border: 1px solid #fff;
+  background: #0de0c0;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.teacher-form button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.teacher-profile-list {
+  min-height: 230px;
+  padding: 16px;
+}
+
+.teacher-profile-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid #555;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teacher-profile-list > button.active {
+  border-color: #0de0c0;
+  box-shadow: inset 5px 0 0 #0de0c0;
+}
+
+.teacher-profile-list > button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-profile-list > button span {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.teacher-empty-list {
+  min-height: 170px;
+  display: grid;
+  place-content: center;
+  color: #888;
+  font-size: 13px;
+}
+
+.teacher-profile-detail {
+  min-height: 520px;
+  padding: 24px;
+}
+
+.teacher-profile-top {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #555;
+}
+
+.teacher-profile-top span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #0de0c0;
+  color: #0de0c0;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-profile-top h3 {
+  margin: 14px 0 0;
+  font-size: 42px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-profile-top strong {
+  color: #0de0c0;
+  font-size: 46px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-profile-score {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.teacher-profile-score button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.teacher-profile-score button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.teacher-edit-panel {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #0de0c0;
+  background: #101010;
+}
+
+.teacher-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.teacher-edit-grid label {
+  min-width: 0;
+}
+
+.teacher-edit-grid label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.teacher-edit-grid .el-input),
+:deep(.teacher-edit-grid .el-input-number) {
+  width: 100%;
+}
+
+:deep(.teacher-edit-grid .el-input__wrapper),
+:deep(.teacher-edit-grid .el-textarea__inner) {
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.teacher-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.teacher-edit-actions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.teacher-edit-actions button:last-child {
+  background: #0de0c0;
+  color: #111;
+}
+
+.teacher-edit-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.teacher-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.teacher-profile-grid section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #444;
+  background: #141414;
+}
+
+.teacher-profile-grid span {
+  display: block;
+  color: #0de0c0;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-profile-grid p {
+  margin: 12px 0 0;
+  color: #ddd;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.mock-exam-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid #0de0c0;
+  background: #101010;
+}
+
+.mock-exam-heading,
+.mock-exam-result > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mock-exam-heading span,
+.mock-exam-controls label > span,
+.mock-exam-result span {
+  display: block;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.mock-exam-heading strong,
+.mock-exam-result strong {
+  display: block;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 18px;
+}
+
+.mock-exam-heading button,
+.mock-exam-result button,
+.ai-task-actions button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #0de0c0;
+  background: #0de0c0;
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mock-exam-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.mock-exam-controls {
+  display: grid;
+  grid-template-columns: 140px 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+:deep(.mock-exam-controls .el-input-number),
+:deep(.mock-exam-controls .el-select) {
+  width: 100%;
+}
+
+:deep(.mock-exam-controls .el-input__wrapper),
+:deep(.mock-exam-controls .el-input-number .el-input__wrapper),
+:deep(.mock-exam-controls .el-select__wrapper) {
+  min-height: 42px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.mock-exam-result {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #333;
+}
+
+.mock-exam-result > button {
+  justify-self: start;
+}
+
+.mock-exam-result pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #333;
+  background: #080808;
+  color: #ddd;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.sprint-outline-panel {
+  border-color: #ffb21c;
+}
+
+.sprint-outline-requirement {
+  grid-column: span 2;
+}
+
+.teacher-evidence-panel {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #555;
+}
+
+.teacher-evidence-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teacher-evidence-heading strong {
+  color: #0de0c0;
+  font-size: 34px;
+  letter-spacing: -0.06em;
+}
+
+.teacher-evidence-heading span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.teacher-evidence-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.teacher-evidence-list article {
+  padding: 16px;
+  border: 1px solid #444;
+  background: #141414;
+}
+
+.teacher-evidence-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.teacher-evidence-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-evidence-list span {
+  flex: 0 0 auto;
+  color: #0de0c0;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.teacher-evidence-list p {
+  margin: 10px 0 0;
+  color: #ddd;
+  line-height: 1.65;
+}
+
+.teacher-evidence-list small {
+  display: block;
+  margin-top: 10px;
+  color: #999;
+}
+
+.teacher-evidence-empty {
+  min-height: 120px;
+  display: grid;
+  place-content: center;
+  margin-top: 14px;
+  border: 1px dashed #555;
+  color: #888;
+  font-size: 13px;
+}
+
+.teacher-empty-detail {
+  min-height: 470px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.teacher-empty-detail strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.teacher-empty-detail p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.review-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #111;
+  background: #f5f3ef;
+}
+
+.review-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.review-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.review-heading h2 span {
+  color: #ffb21c;
+}
+
+.review-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+
+.review-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #ffb21c;
+}
+
+.review-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.review-form .el-select),
+:deep(.review-form .el-input),
+:deep(.review-form .el-input-number) {
+  width: 100%;
+}
+
+:deep(.review-form .el-select__wrapper),
+:deep(.review-form .el-input__wrapper),
+:deep(.review-form .el-textarea__inner) {
+  min-height: 48px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.review-switch {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-weight: 850;
+}
+
+.review-wide {
+  min-width: 0;
+}
+
+.review-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.review-form-actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.review-form-actions button:last-child {
+  background: #ffb21c;
+}
+
+.review-form-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.review-profile-list {
+  min-height: 420px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.review-profile-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 7px 7px 0 #111;
+}
+
+.review-card-top,
+.review-card-meta,
+.review-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-card-top {
+  justify-content: space-between;
+}
+
+.review-card-top span,
+.review-card-meta span {
+  padding: 4px 8px;
+  border: 1px solid #111;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.review-card-top strong {
+  color: #ff3151;
+  font-size: 12px;
+}
+
+.review-profile-card h3 {
+  margin: 16px 0 10px;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+}
+
+.review-profile-card p {
+  min-height: 52px;
+  margin: 0 0 14px;
+  color: #333;
+  line-height: 1.65;
+}
+
+.review-card-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.review-card-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.review-card-actions button:last-child {
+  color: #ff3151;
+}
+
+.review-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.review-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.review-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.ai-config-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #111;
+}
+
+.ai-config-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.ai-config-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.ai-config-heading h2 span {
+  color: #ad93ff;
+}
+
+.ai-config-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.ai-config-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 44px;
+}
+
+.ai-config-status > div {
+  padding: 18px;
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.ai-config-status span,
+.ai-config-status strong {
+  display: block;
+}
+
+.ai-config-status span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-config-status strong {
+  margin-top: 8px;
+  overflow: hidden;
+  color: #ad93ff;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-config-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.4fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 34px;
+}
+
+.ai-provider-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid #555;
+  background: #181818;
+  box-shadow: 8px 8px 0 #ad93ff;
+}
+
+.ai-provider-form label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+:deep(.ai-provider-form .el-input) {
+  width: 100%;
+}
+
+:deep(.ai-provider-form .el-input__wrapper) {
+  min-height: 48px;
+  border: 1px solid #555;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.ai-provider-switch {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #555;
+  font-weight: 850;
+}
+
+.ai-provider-form > p {
+  margin: 0;
+  color: #999;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ai-provider-actions,
+.ai-provider-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ai-provider-actions button,
+.ai-provider-card-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ai-provider-actions button:last-child {
+  background: #ad93ff;
+  color: #111;
+}
+
+.ai-provider-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-provider-list {
+  min-height: 380px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.ai-provider-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #555;
+  background: #181818;
+}
+
+.ai-provider-card-top,
+.ai-provider-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-provider-card-top {
+  justify-content: space-between;
+}
+
+.ai-provider-card-top span,
+.ai-provider-meta span {
+  padding: 4px 8px;
+  border: 1px solid #ad93ff;
+  color: #ad93ff;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.ai-provider-card h3 {
+  margin: 16px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-provider-card p {
+  margin: 0 0 14px;
+  overflow: hidden;
+  color: #ccc;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-provider-card-actions {
+  margin-top: 16px;
+}
+
+.ai-provider-card-actions button:last-child {
+  color: #ff3151;
+}
+
+.ai-provider-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.ai-provider-empty strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.ai-provider-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.ai-task-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  color: #fff;
+  background: #151515;
+}
+
+.ai-task-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.ai-task-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.ai-task-heading h2 span {
+  color: #14cbea;
+}
+
+.ai-task-heading > p {
+  margin: 0 0 5px;
+  color: #ccc;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.ai-task-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 150px;
+  gap: 12px;
+  margin-top: 44px;
+}
+
+.ai-task-status > div,
+.ai-task-status button {
+  min-height: 78px;
+  padding: 18px;
+  border: 1px solid #555;
+  background: #1c1c1c;
+}
+
+.ai-task-status span,
+.ai-task-status strong {
+  display: block;
+}
+
+.ai-task-status span {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ai-task-status strong {
+  margin-top: 8px;
+  color: #14cbea;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.ai-task-status button {
+  color: #111;
+  background: #14cbea;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ai-task-status button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-task-list {
+  min-height: 380px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  margin-top: 34px;
+}
+
+.ai-task-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #555;
+  background: #1b1b1b;
+  box-shadow: inset 0 4px 0 #14cbea;
+}
+
+.ai-task-card-top,
+.ai-task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-task-card-top {
+  justify-content: space-between;
+}
+
+.ai-task-card-top span,
+.ai-task-meta span {
+  padding: 4px 8px;
+  border: 1px solid #14cbea;
+  color: #14cbea;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.ai-task-card-top .ai-task-status-success {
+  border-color: #0de0c0;
+  color: #0de0c0;
+}
+
+.ai-task-card-top .ai-task-status-running,
+.ai-task-card-top .ai-task-status-pending {
+  border-color: #ffb21c;
+  color: #ffb21c;
+}
+
+.ai-task-card-top .ai-task-status-failed,
+.ai-task-card-top .ai-task-status-canceled {
+  border-color: #ff3151;
+  color: #ff3151;
+}
+
+.ai-task-card h3 {
+  margin: 16px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-task-card p {
+  min-height: 72px;
+  max-height: 96px;
+  margin: 0 0 14px;
+  overflow: hidden;
+  color: #ccc;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ai-task-card small {
+  display: block;
+  margin-top: 12px;
+  overflow: hidden;
+  color: #ff8aa0;
+  font-size: 11px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-task-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.ai-task-empty {
+  grid-column: 1 / -1;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #666;
+  color: #888;
+  text-align: center;
+}
+
+.ai-task-empty strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.ai-task-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.export-section {
+  min-height: 100%;
+  padding: 72px clamp(38px, 6vw, 90px) 100px;
+  background: #f5f3ef;
+}
+
+.export-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+  align-items: end;
+  gap: 50px;
+}
+
+.export-heading h2 {
+  margin: 18px 0 0;
+  font-size: clamp(48px, 6vw, 88px);
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+}
+
+.export-heading h2 span {
+  color: #14cbea;
+}
+
+.export-heading > p {
+  margin: 0 0 5px;
+  color: #3f4352;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.export-panel {
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 10px 10px 0 #14cbea;
+}
+
+.export-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.export-field {
+  min-width: 0;
+}
+
+.export-field > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+:deep(.export-field .el-select),
+:deep(.export-field .el-input) {
+  width: 100%;
+}
+
+:deep(.export-field .el-select__wrapper),
+:deep(.export-field .el-input__wrapper) {
+  min-height: 52px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.export-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #111;
+}
+
+.export-options label {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #111;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.export-options label.option-disabled {
+  color: #777;
+  background: #f2f2f2;
+}
+
+.export-options label small {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.export-options button {
+  min-height: 48px;
+  min-width: 170px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #14cbea;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.export-options button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.export-options .export-preview-button {
+  min-width: 145px;
+  border-radius: 0;
+  background: #fff;
+}
+
+.export-preview {
+  min-height: 220px;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid #111;
+}
+
+.export-preview-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.export-preview-heading span,
+.export-preview-heading strong,
+.export-preview-heading p {
+  display: block;
+}
+
+.export-preview-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.export-preview-heading strong {
+  margin-top: 6px;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-heading p {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.export-preview-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.export-preview-stats > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #111;
+  background: #f7f7f7;
+}
+
+.export-preview-stats span,
+.export-preview-stats strong {
+  display: block;
+}
+
+.export-preview-stats span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.export-preview-stats strong {
+  margin-top: 5px;
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.export-preview-grid section,
+.export-preview-related {
+  min-width: 0;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.export-preview-grid section {
+  padding: 16px;
+}
+
+.export-preview-grid h3,
+.export-preview-related h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.export-preview-grid ul,
+.export-preview-related ul {
+  max-height: 220px;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.export-preview-grid li,
+.export-preview-related li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid #ddd;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.export-preview-grid li:first-child,
+.export-preview-related li:first-child {
+  border-top: 0;
+}
+
+.export-preview-grid li strong,
+.export-preview-grid li span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-preview-grid li span {
+  color: #666;
+  font-size: 11px;
+}
+
+.export-preview-grid p,
+.export-preview-related p,
+.export-preview-empty p {
+  margin: 12px 0 0;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.export-preview-related {
+  margin-top: 12px;
+  padding: 16px;
+}
+
+.export-preview-related-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #111;
+}
+
+.export-preview-related-title strong {
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.export-preview-related-title span {
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.export-preview-related article {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.35fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #ddd;
+}
+
+.export-preview-related article:first-of-type {
+  border-top: 0;
+}
+
+.export-preview-related article > div > span {
+  display: inline-flex;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.export-preview-empty {
+  min-height: 190px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.export-preview-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.export-records {
+  margin-top: 56px;
+}
+
+.export-record-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #111;
+}
+
+.export-record-heading strong,
+.export-record-heading span {
+  display: block;
+}
+
+.export-record-heading strong {
+  font-size: 40px;
+  letter-spacing: -0.06em;
+}
+
+.export-record-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.export-record-heading button,
+.export-record-card button {
+  min-height: 42px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.export-record-grid {
+  min-height: 220px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.export-record-card {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: 8px 8px 0 #111;
+}
+
+.export-record-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.export-record-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.export-record-tags .recommended-version {
+  background: #0de0c0;
+}
+
+.export-record-card h3 {
+  margin: 14px 0 8px;
+  overflow: hidden;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-record-card p {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.export-record-actions {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+}
+
+.export-record-card button {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  background: #14cbea;
+}
+
+.export-record-card button:disabled {
+  background: #eee;
+  color: #777;
+  cursor: default;
+}
+
+.export-empty {
+  grid-column: 1 / -1;
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed #777;
+  color: #666;
+  text-align: center;
+}
+
+.export-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.export-empty p {
   margin: 10px 0 0;
   font-size: 12px;
 }
@@ -3368,6 +8513,65 @@ button {
   margin-top: 7px;
   color: #777;
   font-size: 12px;
+}
+
+.batch-upload-list {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.batch-upload-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #faf9f6;
+}
+
+.batch-upload-card :global(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.batch-upload-card-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #111;
+}
+
+.batch-upload-card-heading > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #111;
+  border-radius: 50%;
+  background: var(--dialog-accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.batch-upload-card-heading strong,
+.batch-upload-card-heading p {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-upload-card-heading strong {
+  font-size: 16px;
+}
+
+.batch-upload-card-heading p {
+  margin: 4px 0 0;
+  color: #666;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .text-preview {
@@ -3447,6 +8651,84 @@ button {
   font-weight: 800;
 }
 
+.similar-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.similar-dialog > p {
+  margin: 0;
+  color: #555;
+  line-height: 1.7;
+}
+
+.similar-material-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #faf9f6;
+}
+
+.similar-material-card > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.similar-material-card strong,
+.similar-material-card span {
+  display: block;
+}
+
+.similar-material-card strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similar-material-card > div:first-child span {
+  flex: 0 0 auto;
+  color: #666;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.similar-material-card p {
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.similar-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.similar-reasons span {
+  padding: 5px 9px;
+  border: 1px solid #111;
+  background: #ffef5a;
+  color: #111;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.similar-material-card button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3505,6 +8787,10 @@ button {
 
 :global(.studio-dialog-text) {
   --dialog-accent: #14cbea;
+}
+
+:global(.studio-dialog-similar) {
+  --dialog-accent: #ffef5a;
 }
 
 :global(.studio-dialog-text .el-dialog__body) {
@@ -3850,6 +9136,16 @@ button {
     min-width: 0;
   }
 
+  .course-type-distribution {
+    grid-template-columns: 1fr;
+  }
+
+  .type-distribution-heading {
+    border-right: 0;
+    border-bottom: 1px solid #111;
+    padding-bottom: 14px;
+  }
+
   .chapter-track {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4002,8 +9298,15 @@ button {
   }
 
   .course-hero,
+  .relation-section,
   .chapter-section,
-  .material-section {
+  .material-section,
+  .gap-section,
+  .teacher-section,
+  .review-section,
+  .ai-config-section,
+  .ai-task-section,
+  .export-section {
     padding-left: 22px;
     padding-right: 22px;
   }
@@ -4041,10 +9344,21 @@ button {
     font-size: 28px;
   }
 
+  .type-distribution-row {
+    grid-template-columns: 78px minmax(0, 1fr) 34px;
+  }
+
   .section-intro,
+  .relation-heading,
   .material-title-row,
   .search-heading,
-  .knowledge-heading {
+  .knowledge-heading,
+  .gap-heading,
+  .teacher-heading,
+  .review-heading,
+  .ai-config-heading,
+  .ai-task-heading,
+  .export-heading {
     display: block;
   }
 
@@ -4062,6 +9376,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .sprint-outline-requirement {
+    grid-column: auto;
+  }
+
   .material-title-row > p {
     margin-top: 24px;
   }
@@ -4074,10 +9392,63 @@ button {
     margin-top: 24px;
   }
 
+  .gap-heading > p {
+    margin-top: 24px;
+  }
+
+  .teacher-heading > p {
+    margin-top: 24px;
+  }
+
+  .review-heading > p {
+    margin-top: 24px;
+  }
+
+  .ai-config-heading > p {
+    margin-top: 24px;
+  }
+
+  .ai-task-heading > p {
+    margin-top: 24px;
+  }
+
+  .relation-heading > p {
+    margin-top: 24px;
+  }
+
+  .export-heading > p {
+    margin-top: 24px;
+  }
+
+  .relation-form,
+  .relation-groups,
   .search-input-row,
   .search-filters,
+  .search-history-list,
   .knowledge-generator-main,
-  .knowledge-tags-panel {
+  .knowledge-tags-panel,
+  .knowledge-mastery-row,
+  .gap-generator,
+  .prerequisite-hint-list,
+  .gap-layout,
+  .gap-summary,
+  .gap-item-grid,
+  .teacher-layout,
+  .teacher-edit-grid,
+  .teacher-profile-grid,
+  .mock-exam-controls,
+  .review-layout,
+  .review-profile-list,
+  .ai-config-status,
+  .ai-config-layout,
+  .ai-provider-list,
+  .ai-task-status,
+  .ai-task-list,
+  .export-form-grid,
+  .export-preview-stats,
+  .export-preview-grid,
+  .export-preview-related article,
+  .export-record-grid {
     grid-template-columns: 1fr;
   }
 
@@ -4093,6 +9464,18 @@ button {
 
   .knowledge-grid {
     grid-template-columns: 1fr;
+  }
+
+  .export-options,
+  .knowledge-mastery-actions,
+  .teacher-edit-actions,
+  .review-form-actions,
+  .ai-provider-actions,
+  .export-preview-heading,
+  .export-record-heading,
+  .export-record-card {
+    display: grid;
+    justify-items: stretch;
   }
 
   .knowledge-generator > p {

@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException exception) {
-        return buildResponse(HttpStatus.BAD_REQUEST, exception.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, exception.getMessage(), exception.getCode());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -33,6 +33,17 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", status.value());
         body.put("message", message);
+        return ResponseEntity.status(status).body(body);
+    }
+
+    private ResponseEntity<Map<String, Object>> buildResponse(
+            HttpStatus status, String message, String code) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", status.value());
+        body.put("message", message);
+        if (code != null && !code.trim().isEmpty()) {
+            body.put("code", code);
+        }
         return ResponseEntity.status(status).body(body);
     }
 }
