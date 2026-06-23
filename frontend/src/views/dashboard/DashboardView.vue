@@ -1038,183 +1038,33 @@
             </div>
           </section>
 
-          <section
-            id="review"
-            class="review-section scroll-panel"
-            :class="{ 'section-active': activeSection === 'review' }"
-          >
-            <div class="review-heading">
-              <div>
-                <p class="eyebrow">复习配置</p>
-                <h2>定义生成目标<span>.</span></h2>
-              </div>
-              <p>保存考试目标、难度、输出类型、前置课程、教师画像和自定义要求，后续可直接用于复习资料生成。</p>
-            </div>
-
-            <div class="review-layout">
-              <form class="review-form review-form-horizontal" @submit.prevent="saveReviewProfile">
-                <label>
-                  <span>配置名称</span>
-                  <el-input v-model="reviewProfileForm.profileName" maxlength="128" />
-                </label>
-                <label>
-                  <span>考试目标</span>
-                  <el-input v-model="reviewProfileForm.target" maxlength="128" placeholder="例如：期末考试" />
-                </label>
-                <label>
-                  <span>复习难度</span>
-                  <el-select v-model="reviewProfileForm.difficultyLevel">
-                    <el-option
-                      v-for="option in reviewDifficultyOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                </label>
-                <label>
-                  <span>教师画像</span>
-                  <el-select v-model="reviewProfileForm.teacherProfileId" clearable placeholder="不绑定画像">
-                    <el-option
-                      v-for="profile in teacherProfiles"
-                      :key="profile.id"
-                      :label="profile.teacherName"
-                      :value="profile.id"
-                    />
-                  </el-select>
-                </label>
-                <label class="review-switch">
-                  <el-switch v-model="reviewProfileForm.includePrerequisites" />
-                  <span>包含前置课程</span>
-                </label>
-                <label class="review-wide">
-                  <span>自定义要求</span>
-                  <el-input
-                    v-model="reviewProfileForm.customRequirement"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="例如：重点覆盖树、图和排序，输出适合考前两天冲刺的版本"
-                  />
-                </label>
-                <div class="review-form-actions">
-                  <button v-if="editingReviewProfileId" type="button" @click="resetReviewProfileForm">
-                    取消编辑
-                  </button>
-                  <button type="submit" :disabled="reviewProfileSaving">
-                    {{ reviewProfileSaving ? '保存中…' : editingReviewProfileId ? '保存修改' : '保存配置' }}
-                  </button>
-                </div>
-              </form>
-
-              <div class="review-generation-panel">
-                <div class="review-generation-heading">
-                  <div>
-                    <span>生成工具</span>
-                    <strong>选择要生成的复习资料</strong>
-                  </div>
-                  <p>{{ reviewOutputLabel(activeReviewOutputType) }} 会按照当前横向配置和课程知识点生成 Markdown，并在下方直接预览。</p>
-                </div>
-
-                <div class="review-output-grid">
-                  <button
-                    v-for="option in reviewOutputOptions"
-                    :key="option.value"
-                    type="button"
-                    class="review-output-card"
-                    :class="{ active: activeReviewOutputType === option.value }"
-                    :style="{ '--output-accent': option.accent }"
-                    @click="selectReviewOutput(option.value)"
-                  >
-                    <span>{{ option.label }}</span>
-                    <strong>{{ option.value === 'MOCK_EXAM' ? mockExamForm.questionCount + ' 题' : 'MD' }}</strong>
-                    <small>{{ option.hint }}</small>
-                  </button>
-                </div>
-
-                <div class="review-generator-surface">
-                  <form class="review-generator-controls" @submit.prevent="generateSelectedReviewAsset">
-                    <label v-if="activeReviewOutputType === 'MOCK_EXAM'">
-                      <span>题数</span>
-                      <el-input-number
-                        v-model="mockExamForm.questionCount"
-                        :min="1"
-                        :max="30"
-                        :step="1"
-                        controls-position="right"
-                      />
-                    </label>
-                    <label v-if="activeReviewOutputType === 'MOCK_EXAM'">
-                      <span>难度</span>
-                      <el-select v-model="mockExamForm.difficultyLevel">
-                        <el-option
-                          v-for="option in reviewDifficultyOptions"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        />
-                      </el-select>
-                    </label>
-                    <label class="review-generator-requirement">
-                      <span>本次补充要求</span>
-                      <el-input
-                        v-model="activeReviewCustomRequirement"
-                        maxlength="1000"
-                        placeholder="可留空，默认使用上方自定义要求"
-                      />
-                    </label>
-                    <button type="submit" :disabled="isSelectedReviewGenerating">
-                      {{ isSelectedReviewGenerating ? '生成中…' : '生成' + reviewOutputLabel(activeReviewOutputType) }}
-                    </button>
-                  </form>
-
-                  <div v-if="activeReviewResult" class="review-result-panel">
-                    <div class="review-result-heading">
-                      <div>
-                        <span>{{ reviewOutputLabel(activeReviewResult.outputType) }}</span>
-                        <strong>{{ activeReviewResult.title }}</strong>
-                        <small>{{ activeReviewResult.resultPath }}</small>
-                      </div>
-                      <button type="button" @click="downloadReviewResult(activeReviewResult)">
-                        下载 Markdown
-                      </button>
-                    </div>
-                    <div class="markdown-preview" v-html="renderMarkdown(activeReviewResult.content)"></div>
-                  </div>
-                  <div v-else class="review-result-empty">
-                    <strong>生成后会在这里展示 Markdown 预览。</strong>
-                    <p>标题、列表、表格、勾选项都会按 Markdown 结构渲染。</p>
-                  </div>
-                </div>
-              </div>
-
-              <div v-loading="reviewProfileLoading" class="review-profile-list review-profile-row">
-                <article v-for="profile in reviewProfiles" :key="profile.id" class="review-profile-card">
-                  <div class="review-card-top">
-                    <span>{{ reviewOutputLabel(profile.outputType) }}</span>
-                    <strong>{{ reviewDifficultyLabel(profile.difficultyLevel) }}</strong>
-                  </div>
-                  <h3>{{ profile.profileName }}</h3>
-                  <p>{{ profile.customRequirement || '暂无自定义要求' }}</p>
-                  <div class="review-card-meta">
-                    <span>{{ profile.target || '未设置目标' }}</span>
-                    <span>{{ profile.includePrerequisites ? '包含前置课程' : '仅当前课程' }}</span>
-                    <span>{{ profile.teacherName || '未绑定教师画像' }}</span>
-                  </div>
-                  <div class="review-card-actions">
-                    <button type="button" @click="editReviewProfile(profile)">编辑</button>
-                    <button type="button" @click="removeReviewProfile(profile)">删除</button>
-                  </div>
-                </article>
-                <div
-                  v-if="!reviewProfileLoading && reviewProfiles.length === 0"
-                  class="review-empty"
-                >
-                  <strong>还没有复习配置。</strong>
-                  <p>先保存一个横向配置，后续生成复习资料时可以复用。</p>
-                </div>
-              </div>
-            </div>
-          </section>
+          <ReviewSection
+            :active="activeSection === 'review'"
+            :profile-form="reviewProfileForm"
+            :mock-exam-form="mockExamForm"
+            :teacher-profiles="teacherProfiles"
+            :difficulty-options="reviewDifficultyOptions"
+            :output-options="reviewOutputOptions"
+            :active-output-type="activeReviewOutputType"
+            :custom-requirement="activeReviewCustomRequirement"
+            :generating="isSelectedReviewGenerating"
+            :active-result="activeReviewResult"
+            :profiles="reviewProfiles"
+            :profile-loading="reviewProfileLoading"
+            :profile-saving="reviewProfileSaving"
+            :editing-profile-id="editingReviewProfileId"
+            :output-label="reviewOutputLabel"
+            :difficulty-label="reviewDifficultyLabel"
+            :render-markdown="renderMarkdown"
+            @save-profile="saveReviewProfile"
+            @reset-profile="resetReviewProfileForm"
+            @select-output="selectReviewOutput"
+            @generate="generateSelectedReviewAsset"
+            @update:custom-requirement="activeReviewCustomRequirement = $event"
+            @download-result="downloadReviewResult"
+            @edit-profile="editReviewProfile"
+            @remove-profile="removeReviewProfile"
+          />
 
           <section
             id="exam"
@@ -1755,80 +1605,19 @@
     </template>
   </el-dialog>
 
-  <el-dialog
+  <MaterialReaderDialog
     v-model="textPreviewVisible"
-    class="studio-dialog studio-dialog-text material-reader-dialog"
-    modal-class="studio-dialog-overlay"
-    width="1040px"
-    :show-close="false"
-  >
-    <template #header>
-      <div class="dialog-heading">
-        <div>
-          <p>reader / 资料阅读器</p>
-          <h2>{{ previewMaterial?.title || '资料预览' }}<span>.</span></h2>
-        </div>
-        <button type="button" class="dialog-close" aria-label="关闭" @click="textPreviewVisible = false">
-          ×
-        </button>
-      </div>
-    </template>
-    <div v-loading="textChunkLoading" class="text-preview material-reader">
-      <iframe
-        v-if="materialPreviewMode === 'pdf'"
-        class="material-reader-frame"
-        :src="materialReaderUrl"
-        title="资料 PDF 预览"
-      ></iframe>
-
-      <article v-else-if="materialPreviewMode === 'markdown'" class="material-reader-markdown">
-        <div v-html="renderMarkdown(materialPreviewContent)"></div>
-      </article>
-
-      <article v-else-if="materialPreviewMode === 'text'" class="material-reader-plain">
-        <pre>{{ materialPreviewContent }}</pre>
-      </article>
-
-      <div v-else-if="materialPreviewMode === 'chunks'" class="material-reader-chunks">
-        <section v-for="(chunk, index) in textChunks" :key="chunk.id" class="text-page">
-          <div class="text-page-marker">
-            <span>{{ String(index + 1).padStart(2, '0') }}</span>
-          </div>
-          <div class="text-page-content">
-            <div class="text-page-heading">
-              <strong>第 {{ chunk.pageNo || index + 1 }} 页</strong>
-              <span>{{ chunk.wordCount || chunk.content?.length || 0 }} 字符</span>
-            </div>
-            <div class="text-page-body">{{ chunk.content }}</div>
-          </div>
-        </section>
-        <el-empty v-if="!textChunkLoading && textChunks.length === 0" description="暂无解析文本" />
-      </div>
-
-      <div v-else class="material-reader-download">
-        <strong>该类型暂不支持网页内直接预览</strong>
-        <p>可以下载后用本地阅读器打开：{{ previewMaterial?.originalName || previewMaterial?.title }}</p>
-        <button type="button" @click="downloadPreviewMaterial">下载资料</button>
-      </div>
-    </div>
-    <template #footer>
-      <div class="dialog-footer text-dialog-footer">
-        <span>{{ materialReaderFooter }}</span>
-        <button
-          v-if="canDownloadPreviewMaterial"
-          type="button"
-          class="dialog-button dialog-button-ghost"
-          @click="downloadPreviewMaterial"
-        >
-          下载原文件
-        </button>
-        <button type="button" class="dialog-button dialog-button-primary" @click="textPreviewVisible = false">
-          <span>阅读完成</span>
-          <strong>→</strong>
-        </button>
-      </div>
-    </template>
-  </el-dialog>
+    :material="previewMaterial"
+    :mode="materialPreviewMode"
+    :loading="textChunkLoading"
+    :chunks="textChunks"
+    :content="materialPreviewContent"
+    :reader-url="materialReaderUrl"
+    :footer-text="materialReaderFooter"
+    :can-download="canDownloadPreviewMaterial"
+    :render-markdown="renderMarkdown"
+    @download="downloadPreviewMaterial"
+  />
 
   <el-dialog
     v-model="similarDialogVisible"
@@ -1922,6 +1711,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ExamMappingPanel from '../../components/dashboard/ExamMappingPanel.vue'
+import MaterialReaderDialog from '../../components/dashboard/MaterialReaderDialog.vue'
+import ReviewSection from '../../components/dashboard/ReviewSection.vue'
 import { dashboardSectionPath, normalizeDashboardSection } from './dashboardPages'
 import { login, register } from '../../api/auth'
 import {
@@ -7628,539 +7419,6 @@ button {
   font-size: 12px;
 }
 
-.review-section {
-  min-height: 100%;
-  padding: 72px clamp(38px, 6vw, 90px) 100px;
-  color: #111;
-  background: #f5f3ef;
-}
-
-.review-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
-  align-items: end;
-  gap: 50px;
-}
-
-.review-heading h2 {
-  margin: 18px 0 0;
-  font-size: clamp(48px, 6vw, 88px);
-  letter-spacing: -0.065em;
-  line-height: 0.92;
-}
-
-.review-heading h2 span {
-  color: #ffb21c;
-}
-
-.review-heading > p {
-  margin: 0 0 5px;
-  color: #3f4352;
-  font-size: 15px;
-  line-height: 1.75;
-}
-
-.review-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 24px;
-  margin-top: 48px;
-}
-
-.review-generation-panel {
-  display: grid;
-  gap: 20px;
-  padding: 22px;
-  border: 1px solid #111;
-  background: #fff8e8;
-  color: #111;
-  box-shadow: 10px 10px 0 #ffb21c;
-}
-
-.review-generation-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.review-generation-heading > p {
-  max-width: 520px;
-  margin: 0;
-  color: #4d4d4d;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.review-generation-heading span,
-.review-generation-heading strong {
-  display: block;
-}
-
-.review-generation-heading span {
-  color: #ffb21c;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-}
-
-.review-generation-heading strong {
-  font-size: 24px;
-  letter-spacing: -0.04em;
-}
-
-.review-output-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.review-output-card {
-  min-height: 138px;
-  display: grid;
-  align-content: space-between;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid #111;
-  background: #fff;
-  color: #111;
-  text-align: left;
-  box-shadow: 5px 5px 0 var(--output-accent);
-  cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
-}
-
-.review-output-card:hover,
-.review-output-card.active {
-  background: var(--output-accent);
-  transform: translateY(-3px);
-}
-
-.review-output-card span,
-.review-output-card strong,
-.review-output-card small {
-  display: block;
-}
-
-.review-output-card span {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-}
-
-.review-output-card strong {
-  justify-self: start;
-  padding: 4px 8px;
-  border: 1px solid #111;
-  background: #fff;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.review-output-card small {
-  color: #333;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.review-generator-surface {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.32fr) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.review-generator-controls {
-  display: grid;
-  gap: 14px;
-  align-content: start;
-  padding: 18px;
-  border: 1px solid #111;
-  background: #fff;
-}
-
-.review-generator-controls label > span {
-  display: block;
-  margin-bottom: 8px;
-  color: #666;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-:deep(.review-generator-controls .el-input),
-:deep(.review-generator-controls .el-input-number),
-:deep(.review-generator-controls .el-select) {
-  width: 100%;
-}
-
-:deep(.review-generator-controls .el-input__wrapper),
-:deep(.review-generator-controls .el-input-number .el-input__wrapper),
-:deep(.review-generator-controls .el-select__wrapper) {
-  min-height: 46px;
-  border: 1px solid #111;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.review-generator-controls > button {
-  min-height: 46px;
-  border: 1px solid #111;
-  background: #ffb21c;
-  color: #111;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.review-generator-controls > button:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-
-.review-result-panel,
-.review-result-empty {
-  min-width: 0;
-  border: 1px solid #111;
-  background: #fff;
-}
-
-.review-result-heading {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px;
-  border-bottom: 1px solid #111;
-  background: #fff;
-}
-
-.review-result-heading span,
-.review-result-heading strong,
-.review-result-heading small {
-  display: block;
-}
-
-.review-result-heading span {
-  color: #ff3151;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.review-result-heading strong {
-  margin-top: 6px;
-  font-size: 22px;
-  letter-spacing: -0.04em;
-}
-
-.review-result-heading small {
-  margin-top: 6px;
-  color: #777;
-  font-size: 11px;
-}
-
-.review-result-heading button {
-  min-height: 40px;
-  flex: 0 0 auto;
-  padding: 0 14px;
-  border: 1px solid #111;
-  background: #ffb21c;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.review-result-empty {
-  min-height: 320px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  padding: 24px;
-  border-style: dashed;
-  color: #666;
-  text-align: center;
-}
-
-.review-result-empty strong {
-  color: #111;
-  font-size: 20px;
-}
-
-.review-result-empty p {
-  margin: 10px 0 0;
-  font-size: 12px;
-}
-
-.markdown-preview {
-  max-height: 620px;
-  overflow: auto;
-  padding: 22px;
-  color: #191919;
-  line-height: 1.78;
-}
-
-.markdown-preview :deep(h1),
-.markdown-preview :deep(h2),
-.markdown-preview :deep(h3),
-.markdown-preview :deep(h4) {
-  margin: 22px 0 12px;
-  line-height: 1.15;
-  letter-spacing: -0.035em;
-}
-
-.markdown-preview :deep(h1) {
-  margin-top: 0;
-  font-size: 34px;
-}
-
-.markdown-preview :deep(h2) {
-  font-size: 26px;
-  border-bottom: 1px solid #111;
-  padding-bottom: 8px;
-}
-
-.markdown-preview :deep(h3) {
-  font-size: 21px;
-}
-
-.markdown-preview :deep(p) {
-  margin: 0 0 12px;
-}
-
-.markdown-preview :deep(ul) {
-  margin: 0 0 16px;
-  padding-left: 20px;
-}
-
-.markdown-preview :deep(li) {
-  margin: 6px 0;
-}
-
-.markdown-preview :deep(.markdown-check) {
-  list-style: none;
-  position: relative;
-  margin-left: -18px;
-  padding-left: 28px;
-}
-
-.markdown-preview :deep(.markdown-check::before) {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.45em;
-  width: 14px;
-  height: 14px;
-  border: 1px solid #111;
-  background: #fff;
-}
-
-.markdown-preview :deep(.markdown-check.checked::before) {
-  background: #0de0c0;
-  box-shadow: inset 0 0 0 3px #fff;
-}
-
-.markdown-preview :deep(table) {
-  width: 100%;
-  margin: 14px 0 18px;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.markdown-preview :deep(th),
-.markdown-preview :deep(td) {
-  padding: 10px;
-  border: 1px solid #111;
-  text-align: left;
-  vertical-align: top;
-}
-
-.markdown-preview :deep(th) {
-  background: #fff0c7;
-}
-
-.markdown-preview :deep(code) {
-  padding: 2px 5px;
-  border: 1px solid #ddd;
-  background: #f5f3ef;
-  font-family: Consolas, monospace;
-}
-
-.review-form {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
-  gap: 14px;
-  align-items: end;
-  padding: 22px;
-  border: 1px solid #111;
-  background: #fff;
-  box-shadow: 10px 10px 0 #ffb21c;
-}
-
-.review-form-horizontal .review-wide {
-  grid-column: span 2;
-}
-
-.review-form-horizontal .review-form-actions {
-  align-self: end;
-}
-
-.review-form label > span {
-  display: block;
-  margin-bottom: 8px;
-  color: #666;
-  font-size: 11px;
-  font-weight: 850;
-}
-
-:deep(.review-form .el-select),
-:deep(.review-form .el-input),
-:deep(.review-form .el-input-number) {
-  width: 100%;
-}
-
-:deep(.review-form .el-select__wrapper),
-:deep(.review-form .el-input__wrapper),
-:deep(.review-form .el-textarea__inner) {
-  min-height: 48px;
-  border: 1px solid #111;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.review-switch {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  border: 1px solid #111;
-  font-weight: 850;
-}
-
-.review-wide {
-  min-width: 0;
-}
-
-.review-form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.review-form-actions button {
-  min-height: 42px;
-  padding: 0 16px;
-  border: 1px solid #111;
-  background: #fff;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.review-form-actions button:last-child {
-  background: #ffb21c;
-}
-
-.review-form-actions button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.review-profile-list {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(260px, 1fr));
-  gap: 14px;
-  align-content: start;
-}
-
-.review-profile-row {
-  margin-top: 4px;
-}
-
-.review-profile-card {
-  min-width: 0;
-  padding: 20px;
-  border: 1px solid #111;
-  background: #fff;
-  box-shadow: 7px 7px 0 #111;
-}
-
-.review-card-top,
-.review-card-meta,
-.review-card-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.review-card-top {
-  justify-content: space-between;
-}
-
-.review-card-top span,
-.review-card-meta span {
-  padding: 4px 8px;
-  border: 1px solid #111;
-  font-size: 10px;
-  font-weight: 850;
-}
-
-.review-card-top strong {
-  color: #ff3151;
-  font-size: 12px;
-}
-
-.review-profile-card h3 {
-  margin: 16px 0 10px;
-  font-size: 25px;
-  letter-spacing: -0.04em;
-}
-
-.review-profile-card p {
-  min-height: 52px;
-  margin: 0 0 14px;
-  color: #333;
-  line-height: 1.65;
-}
-
-.review-card-actions {
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.review-card-actions button {
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid #111;
-  background: #fff;
-  font-size: 11px;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.review-card-actions button:last-child {
-  color: #ff3151;
-}
-
-.review-empty {
-  grid-column: 1 / -1;
-  min-height: 320px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  border: 1px dashed #777;
-  color: #666;
-  text-align: center;
-}
-
-.review-empty strong {
-  color: #111;
-  font-size: 20px;
-}
-
-.review-empty p {
-  margin: 10px 0 0;
-  font-size: 12px;
-}
-
 .ai-config-section {
   min-height: 100%;
   padding: 72px clamp(38px, 6vw, 90px) 100px;
@@ -9151,206 +8409,6 @@ button {
   font-weight: 800;
 }
 
-.text-preview {
-  min-height: 240px;
-  max-height: 62vh;
-  overflow: auto;
-  padding: 4px 12px 4px 0;
-  scrollbar-color: #14cbea #eee;
-  scrollbar-width: thin;
-}
-
-.text-page {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 20px;
-  padding: 24px 0 30px;
-  border-bottom: 1px solid #111;
-}
-
-.text-page:first-child {
-  padding-top: 0;
-}
-
-.text-page-marker span {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #111;
-  border-radius: 50%;
-  background: #14cbea;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.text-page-content {
-  min-width: 0;
-}
-
-.text-page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 18px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #ddd;
-  color: #555;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.text-page-heading strong {
-  color: #111;
-  font-size: 15px;
-}
-
-.text-page-body {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #202020;
-  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.95;
-  letter-spacing: 0.015em;
-}
-
-.material-reader {
-  min-height: 520px;
-  padding: 0;
-  border: 1px solid #111;
-  background: #fff;
-}
-
-.material-reader-frame {
-  width: 100%;
-  min-height: 64vh;
-  display: block;
-  border: 0;
-  background: #f5f5f2;
-}
-
-.material-reader-markdown,
-.material-reader-plain,
-.material-reader-download,
-.material-reader-chunks {
-  padding: 28px;
-}
-
-.material-reader-markdown {
-  color: #171717;
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.material-reader-markdown :deep(h1),
-.material-reader-markdown :deep(h2),
-.material-reader-markdown :deep(h3),
-.material-reader-markdown :deep(h4) {
-  margin: 1.25em 0 0.55em;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-}
-
-.material-reader-markdown :deep(h1:first-child),
-.material-reader-markdown :deep(h2:first-child),
-.material-reader-markdown :deep(h3:first-child) {
-  margin-top: 0;
-}
-
-.material-reader-markdown :deep(h1) {
-  font-size: 34px;
-}
-
-.material-reader-markdown :deep(h2) {
-  padding-bottom: 8px;
-  border-bottom: 1px solid #111;
-  font-size: 26px;
-}
-
-.material-reader-markdown :deep(h3) {
-  font-size: 21px;
-}
-
-.material-reader-markdown :deep(p),
-.material-reader-markdown :deep(li) {
-  color: #333;
-}
-
-.material-reader-markdown :deep(ul) {
-  display: grid;
-  gap: 8px;
-  padding-left: 22px;
-}
-
-.material-reader-markdown :deep(table) {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 18px 0;
-  font-size: 13px;
-}
-
-.material-reader-markdown :deep(th),
-.material-reader-markdown :deep(td) {
-  padding: 10px 12px;
-  border: 1px solid #111;
-  text-align: left;
-  vertical-align: top;
-}
-
-.material-reader-markdown :deep(th) {
-  background: #ffef5a;
-  font-weight: 900;
-}
-
-.material-reader-plain pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #222;
-  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
-  font-size: 15px;
-  line-height: 1.85;
-}
-
-.material-reader-download {
-  min-height: 420px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 12px;
-  text-align: center;
-}
-
-.material-reader-download strong {
-  font-size: 22px;
-}
-
-.material-reader-download p {
-  max-width: 520px;
-  margin: 0;
-  color: #555;
-  line-height: 1.7;
-}
-
-.material-reader-download button {
-  min-height: 40px;
-  padding: 0 18px;
-  border: 1px solid #111;
-  border-radius: 999px;
-  background: #111;
-  color: #fff;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.text-dialog-footer {
-  align-items: center;
-  justify-content: space-between;
-}
-
 .text-dialog-footer > span {
   color: #666;
   font-size: 12px;
@@ -10053,7 +9111,6 @@ button {
   .material-section,
   .gap-section,
   .teacher-section,
-  .review-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -10102,7 +9159,6 @@ button {
   .knowledge-heading,
   .gap-heading,
   .teacher-heading,
-  .review-heading,
   .export-heading {
     display: block;
   }
@@ -10145,10 +9201,6 @@ button {
     margin-top: 24px;
   }
 
-  .review-heading > p {
-    margin-top: 24px;
-  }
-
   .export-heading > p {
     margin-top: 24px;
   }
@@ -10168,11 +9220,6 @@ button {
   .teacher-edit-grid,
   .teacher-profile-grid,
   .mock-exam-controls,
-  .review-layout,
-  .review-form,
-  .review-output-grid,
-  .review-generator-surface,
-  .review-profile-list,
   .export-form-grid,
   .export-preview-stats,
   .export-preview-grid,
@@ -10198,21 +9245,11 @@ button {
   .export-options,
   .knowledge-mastery-actions,
   .teacher-edit-actions,
-  .review-form-actions,
   .export-preview-heading,
   .export-record-heading,
   .export-record-card {
     display: grid;
     justify-items: stretch;
-  }
-
-  .review-form-horizontal .review-wide {
-    grid-column: auto;
-  }
-
-  .review-generation-heading,
-  .review-result-heading {
-    display: grid;
   }
 
   .knowledge-generator > p {
