@@ -30,12 +30,14 @@ export function deleteMaterial(materialId, userId) {
   })
 }
 
-export function parsePdf(materialId, userId) {
+export function parseMaterial(materialId, userId) {
   return request.post(`/materials/${materialId}/parse`, null, {
     params: { userId },
     timeout: 120000
   })
 }
+
+export const parsePdf = parseMaterial
 
 export function generateMaterialSummary(materialId, userId, data = {}) {
   return request.post(`/materials/${materialId}/summary/ai-generate`, data, {
@@ -48,6 +50,22 @@ export function listTextChunks(materialId, userId) {
   return request.get(`/materials/${materialId}/text-chunks`, {
     params: { userId }
   })
+}
+
+export function previewMaterialContent(materialId, userId) {
+  return request.get(`/materials/${materialId}/preview`, {
+    params: { userId },
+    responseType: 'text',
+    transformResponse: [data => data]
+  })
+}
+
+export function materialFileUrl(materialId, userId, disposition = 'inline') {
+  const params = new URLSearchParams({
+    userId: String(userId),
+    disposition
+  })
+  return `/api/materials/${materialId}/file?${params.toString()}`
 }
 
 export function listSimilarMaterials(materialId, userId) {

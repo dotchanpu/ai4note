@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -157,6 +158,53 @@ public class MaterialService {
             throw new BusinessException("资料文件不存在");
         }
         return path;
+    }
+
+    public MaterialFile getOwnedMaterialFile(Long materialId, Long userId) {
+        getOwnedMaterial(materialId, userId);
+        return materialFileRepository.findByMaterialId(materialId)
+                .orElseThrow(() -> new BusinessException("Material file does not exist"));
+    }
+
+    @Transactional
+    public MaterialVO registerGeneratedFile(
+            Long userId,
+            Long courseId,
+            String title,
+            String materialType,
+            String summary,
+            Path outputPath) {
+        courseService.getOwnedCourse(courseId, userId);
+        Path normalizedPath = outputPath.toAbsolutePath().normalize();
+        if (!normalizedPath.startsWith(storageRoot) || !Files.exists(normalizedPath)) {
+            throw new BusinessException("Generated material file does not exist");
+        }
+        String originalName = normalizedPath.getFileName().toString();
+        String extension = extensionOf(originalName);
+
+        Material material = new Material();
+        material.setCourseId(courseId);
+        material.setChapterId(null);
+        material.setTitle(requireText(title, "Material title cannot be empty"));
+        material.setMaterialType(requireText(materialType, "Material type cannot be empty").toUpperCase(Locale.ROOT));
+        material.setYear(LocalDate.now().getYear());
+        material.setKey(false);
+        material.setSummary(normalize(summary));
+        material = materialRepository.save(material);
+
+        MaterialFile materialFile = new MaterialFile();
+        materialFile.setMaterialId(material.getId());
+        materialFile.setOriginalName(originalName);
+        materialFile.setStoredName(originalName);
+        materialFile.setFilePath(storageRoot.relativize(normalizedPath).toString().replace('\\', '/'));
+        materialFile.setFileType(extension);
+        try {
+            materialFile.setFileSize(Files.size(normalizedPath));
+        } catch (IOException exception) {
+            throw new BusinessException("Failed to read generated material file size");
+        }
+        materialFile = materialFileRepository.save(materialFile);
+        return MaterialVO.from(material, materialFile, 0);
     }
 
     private MaterialVO toVO(Material material) {

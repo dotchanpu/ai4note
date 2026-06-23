@@ -1,20 +1,18 @@
 package com.example.coursekb.dto;
 
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
-public class MockExamGenerateRequest {
+public class ReviewAssetGenerateRequest {
     @NotNull(message = "用户 ID 不能为空")
     private Long userId;
 
-    @NotNull(message = "教师画像 ID 不能为空")
     private Long teacherProfileId;
 
-    @Min(value = 1, message = "题目数量不能小于 1")
-    @Max(value = 30, message = "题目数量不能超过 30")
-    private Integer questionCount = 8;
+    @NotBlank(message = "生成类型不能为空")
+    @Size(max = 32, message = "生成类型不能超过 32 个字符")
+    private String outputType;
 
     @Size(max = 32, message = "难度不能超过 32 个字符")
     private String difficultyLevel = "MEDIUM";
@@ -31,8 +29,8 @@ public class MockExamGenerateRequest {
     public void setUserId(Long userId) { this.userId = userId; }
     public Long getTeacherProfileId() { return teacherProfileId; }
     public void setTeacherProfileId(Long teacherProfileId) { this.teacherProfileId = teacherProfileId; }
-    public Integer getQuestionCount() { return questionCount; }
-    public void setQuestionCount(Integer questionCount) { this.questionCount = questionCount; }
+    public String getOutputType() { return outputType; }
+    public void setOutputType(String outputType) { this.outputType = outputType; }
     public String getDifficultyLevel() { return difficultyLevel; }
     public void setDifficultyLevel(String difficultyLevel) { this.difficultyLevel = difficultyLevel; }
     public Boolean getIncludePrerequisites() { return includePrerequisites; }

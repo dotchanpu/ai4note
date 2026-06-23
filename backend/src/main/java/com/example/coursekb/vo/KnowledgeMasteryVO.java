@@ -27,12 +27,22 @@ public class KnowledgeMasteryVO {
         result.id = status.getId();
         result.userId = status.getUserId();
         result.knowledgeItemId = status.getKnowledgeItemId();
-        result.masteryStatus = status.getMasteryStatus();
+        result.masteryStatus = normalizeMasteryStatus(status.getMasteryStatus());
         result.masteryScore = status.getMasteryScore();
         result.note = status.getNote();
         result.lastReviewTime = status.getLastReviewTime();
         result.updateTime = status.getUpdateTime();
         return result;
+    }
+
+    private static String normalizeMasteryStatus(String value) {
+        if ("MASTERED".equals(value)) {
+            return "MASTERED";
+        }
+        if ("LEARNING".equals(value) || "WEAK".equals(value) || "NEED_REVIEW".equals(value)) {
+            return "LEARNING";
+        }
+        return "UNKNOWN";
     }
 
     public Long getId() { return id; }

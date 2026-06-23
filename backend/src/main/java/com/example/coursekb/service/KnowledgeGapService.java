@@ -246,7 +246,7 @@ public class KnowledgeGapService {
         KnowledgeRemediationPathVO.Stage prerequisiteStage = new KnowledgeRemediationPathVO.Stage(
                 "PREREQUISITE_REPAIR", "先补前置基础", "优先补齐来自前置课程的薄弱知识，降低后续复习阻力");
         KnowledgeRemediationPathVO.Stage priorityStage = new KnowledgeRemediationPathVO.Stage(
-                "HIGH_PRIORITY", "攻克高优先级缺口", "处理严重程度较高或掌握分数较低的核心知识点");
+                "HIGH_PRIORITY", "攻克高优先级缺口", "处理严重程度较高的核心知识点");
         KnowledgeRemediationPathVO.Stage examStage = new KnowledgeRemediationPathVO.Stage(
                 "EXAM_PRACTICE", "专项真题训练", "围绕真题命中较多的知识点做题和复盘");
         KnowledgeRemediationPathVO.Stage consolidationStage = new KnowledgeRemediationPathVO.Stage(
@@ -342,51 +342,41 @@ public class KnowledgeGapService {
             SourceCourse source,
             UserKnowledgeStatus mastery,
             ExamKnowledgeStatVO stat) {
-        String masteryStatus = mastery == null ? "UNKNOWN" : mastery.getMasteryStatus();
-        BigDecimal masteryScore = mastery == null ? null : mastery.getMasteryScore();
+        String masteryStatus = simplifyMasteryStatus(mastery == null ? null : mastery.getMasteryStatus());
         long questionCount = stat == null ? 0 : stat.getQuestionCount();
         boolean sourceIsPrerequisite = source != null && source.relation != null;
-        if (!shouldCreateGap(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite)) {
+        if (!shouldCreateGap(masteryStatus, questionCount, sourceIsPrerequisite)) {
             return null;
         }
         KnowledgeGapItem gap = new KnowledgeGapItem();
         gap.setKnowledgeItemId(knowledgeItem.getId());
         gap.setSourceCourseId(knowledgeItem.getCourseId());
         gap.setRelatedCourseRelationId(source == null || source.relation == null ? null : source.relation.getId());
-        gap.setGapType(resolveGapType(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite));
-        gap.setSeverityLevel(resolveSeverity(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite));
-        gap.setReason(renderReason(masteryStatus, masteryScore, questionCount, stat, sourceIsPrerequisite));
+        gap.setGapType(resolveGapType(masteryStatus, questionCount, sourceIsPrerequisite));
+        gap.setSeverityLevel(resolveSeverity(masteryStatus, questionCount, sourceIsPrerequisite));
+        gap.setReason(renderReason(masteryStatus, questionCount, stat, sourceIsPrerequisite));
         gap.setSuggestion(renderSuggestion(gap.getGapType(), sourceIsPrerequisite));
         return gap;
     }
 
     private boolean shouldCreateGap(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
-        if ("MASTERED".equals(masteryStatus)
-                && (masteryScore == null || masteryScore.compareTo(new BigDecimal("85")) >= 0)
-                && questionCount == 0) {
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
+        if ("MASTERED".equals(masteryStatus)) {
             return false;
         }
-        if ("WEAK".equals(masteryStatus) || "NEED_REVIEW".equals(masteryStatus)) {
-            return true;
-        }
-        if (masteryScore != null && masteryScore.compareTo(new BigDecimal("80")) < 0) {
+        if ("LEARNING".equals(masteryStatus)) {
             return true;
         }
         return questionCount > 0 || "UNKNOWN".equals(masteryStatus) || sourceIsPrerequisite;
     }
 
     private String resolveGapType(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
-        if ("WEAK".equals(masteryStatus)
-                || (masteryScore != null && masteryScore.compareTo(new BigDecimal("60")) < 0)) {
-            return "WEAK_MASTERY";
-        }
-        if ("NEED_REVIEW".equals(masteryStatus)) {
-            return "NEED_REVIEW";
-        }
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
         if (questionCount >= 2) {
             return "HIGH_FREQUENCY";
+        }
+        if ("LEARNING".equals(masteryStatus)) {
+            return "WEAK_MASTERY";
         }
         if (sourceIsPrerequisite) {
             return "PREREQUISITE_GAP";
@@ -395,21 +385,12 @@ public class KnowledgeGapService {
     }
 
     private int resolveSeverity(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
         int severity = 1;
-        if ("WEAK".equals(masteryStatus)) {
-            severity += 3;
-        } else if ("NEED_REVIEW".equals(masteryStatus)) {
+        if ("LEARNING".equals(masteryStatus)) {
             severity += 2;
-        } else if ("UNKNOWN".equals(masteryStatus) || "LEARNING".equals(masteryStatus)) {
+        } else if ("UNKNOWN".equals(masteryStatus)) {
             severity += 1;
-        }
-        if (masteryScore != null) {
-            if (masteryScore.compareTo(new BigDecimal("60")) < 0) {
-                severity += 2;
-            } else if (masteryScore.compareTo(new BigDecimal("80")) < 0) {
-                severity += 1;
-            }
         }
         if (questionCount >= 3) {
             severity += 2;
@@ -424,15 +405,11 @@ public class KnowledgeGapService {
 
     private String renderReason(
             String masteryStatus,
-            BigDecimal masteryScore,
             long questionCount,
             ExamKnowledgeStatVO stat,
             boolean sourceIsPrerequisite) {
         List<String> reasons = new ArrayList<>();
         reasons.add("掌握状态为 " + masteryStatus);
-        if (masteryScore != null) {
-            reasons.add("掌握分数 " + masteryScore);
-        }
         if (questionCount > 0) {
             reasons.add("真题命中 " + questionCount + " 次"
                     + (stat == null || stat.getLatestExamYear() == null
@@ -452,9 +429,7 @@ public class KnowledgeGapService {
         if ("WEAK_MASTERY".equals(gapType)) {
             return "先回看来源资料和章节总结，再用例题或真题验证掌握程度。";
         }
-        if ("NEED_REVIEW".equals(gapType)) {
-            return "安排一次短复习，补充备注中的疑点并更新掌握分数。";
-        }
+
         if (sourceIsPrerequisite) {
             return "先补齐该前置知识，再继续当前课程相关章节。";
         }
@@ -474,6 +449,16 @@ public class KnowledgeGapService {
             return value.trim();
         }
         return courseName + " 知识缺口报告 " + LocalDateTime.now().format(REPORT_TIME_FORMAT);
+    }
+
+    private String simplifyMasteryStatus(String status) {
+        if ("MASTERED".equals(status)) {
+            return "MASTERED";
+        }
+        if ("LEARNING".equals(status) || "WEAK".equals(status) || "NEED_REVIEW".equals(status)) {
+            return "LEARNING";
+        }
+        return "UNKNOWN";
     }
 
     private static class SourceCourse {

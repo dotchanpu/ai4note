@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class KnowledgeMasteryService {
     private static final Set<String> MASTERY_STATUSES = new HashSet<>(Arrays.asList(
-            "UNKNOWN", "LEARNING", "MASTERED", "WEAK", "NEED_REVIEW"));
+            "UNKNOWN", "LEARNING", "MASTERED"));
     private static final BigDecimal MIN_SCORE = BigDecimal.ZERO;
     private static final BigDecimal MAX_SCORE = new BigDecimal("100");
 
@@ -71,6 +71,9 @@ public class KnowledgeMasteryService {
         String normalized = value == null || value.trim().isEmpty()
                 ? "UNKNOWN"
                 : value.trim().toUpperCase(Locale.ROOT);
+        if ("WEAK".equals(normalized) || "NEED_REVIEW".equals(normalized)) {
+            return "LEARNING";
+        }
         if (!MASTERY_STATUSES.contains(normalized)) {
             throw new BusinessException("不支持的掌握状态：" + normalized);
         }
