@@ -1,8 +1,8 @@
 <template>
-    <section class="global-search-shell">
+    <section class="global-search-shell" :class="{ 'global-search-switching': courseSwitching }">
       <div class="global-search-context">
         <span>current course</span>
-        <strong>{{ selectedCourse?.courseName || '请选择课程' }}</strong>
+        <strong :key="selectedCourse?.id || 'empty'">{{ selectedCourse?.courseName || '请选择课程' }}</strong>
       </div>
       <div class="global-search-box">
         <el-input
@@ -43,6 +43,10 @@ defineProps({
     default: null
   },
   searchLoading: {
+    type: Boolean,
+    default: false
+  },
+  courseSwitching: {
     type: Boolean,
     default: false
   }

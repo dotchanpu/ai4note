@@ -9,6 +9,7 @@
     <DashboardSearchShell
       :selected-course="selectedCourse"
       :search-loading="searchLoading"
+      :course-switching="courseSwitching"
     />
 
     <div class="workspace-layout">
@@ -16,10 +17,11 @@
         :course-loading="courseLoading"
         :courses="courses"
         :selected-course="selectedCourse"
+        :course-switching="courseSwitching"
         @select-course="selectCourse"
       />
 
-      <section class="course-content">
+      <section class="course-content" :class="{ 'course-content-switching': courseSwitching }">
         <template v-if="selectedCourse">
           <SectionDots
             :active-section="activeSection"
@@ -270,6 +272,7 @@ const selectedMaterialTags = ref([])
 const previewedMaterialTags = ref([])
 const knowledgeFilterType = ref(null)
 const selectedCourse = ref(null)
+const courseSwitching = ref(false)
 const selectedGapReport = ref(null)
 const selectedTeacherProfile = ref(null)
 const editingReviewProfileId = ref(null)
@@ -287,6 +290,7 @@ const activeSection = ref(normalizeDashboardSection(route.params.section))
 const examPreferredMaterialId = ref(null)
 const activeReviewOutputType = ref('REVIEW_NOTE')
 const quickSearchKeyword = ref('')
+let courseSwitchTimer = null
 
 const pageSections = [
   { id: 'overview', label: '概览', title: '课程概览' },
@@ -706,6 +710,7 @@ provideDashboardContext({
   materialPreviewContent,
   materialPreviewMode,
   activeSection,
+  courseSwitching,
   examPreferredMaterialId,
   activeReviewOutputType,
   quickSearchKeyword,
@@ -991,6 +996,11 @@ async function loadCourses() {
 }
 
 async function selectCourse(course) {
+  if (selectedCourse.value?.id === course.id) return
+  const shouldAnimateSwitch = Boolean(selectedCourse.value?.id)
+  if (shouldAnimateSwitch) {
+    startCourseSwitchAnimation()
+  }
   selectedCourse.value = course
   activateSection(route.params.section || activeSection.value, false)
   examPreferredMaterialId.value = null
@@ -1034,7 +1044,27 @@ async function selectCourse(course) {
   } finally {
     chapterLoading.value = false
     materialLoading.value = false
+    if (shouldAnimateSwitch) {
+      finishCourseSwitchAnimation()
+    }
   }
+}
+
+function startCourseSwitchAnimation() {
+  if (courseSwitchTimer) {
+    clearTimeout(courseSwitchTimer)
+  }
+  courseSwitching.value = true
+}
+
+function finishCourseSwitchAnimation() {
+  if (courseSwitchTimer) {
+    clearTimeout(courseSwitchTimer)
+  }
+  courseSwitchTimer = setTimeout(() => {
+    courseSwitching.value = false
+    courseSwitchTimer = null
+  }, 760)
 }
 
 async function loadCourseRelations() {

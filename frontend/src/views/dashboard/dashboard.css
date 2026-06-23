@@ -278,6 +278,10 @@ button {
   white-space: nowrap;
 }
 
+.global-search-switching .global-search-context strong {
+  animation: courseNameSwitch 0.58s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .global-search-box {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -488,6 +492,7 @@ button {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  transition: background 0.24s, box-shadow 0.24s, transform 0.24s;
 }
 
 .course-item:hover,
@@ -497,6 +502,10 @@ button {
 
 .course-item.active {
   box-shadow: inset 5px 0 0 #ff3151;
+}
+
+.course-item.active.is-switching {
+  animation: activeCourseSwitch 0.72s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .course-item-copy {
@@ -601,6 +610,23 @@ button {
   overflow: hidden;
 }
 
+.course-content::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0 18%, rgba(255, 239, 90, 0.52) 18% 22%, transparent 22% 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.92) 48%, rgba(255, 255, 255, 0) 100%);
+  opacity: 0;
+  transform: translateX(-115%);
+}
+
+.course-content.course-content-switching::after {
+  animation: coursePanelWipe 0.72s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .scroll-panel {
   position: absolute;
   inset: 0;
@@ -629,6 +655,63 @@ button {
     opacity 0.6s ease,
     transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
     visibility 0s;
+}
+
+.course-content-switching .scroll-panel.section-active {
+  animation: activePanelCourseSwitch 0.76s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes coursePanelWipe {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+  16% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(115%);
+  }
+}
+
+@keyframes activePanelCourseSwitch {
+  0% {
+    filter: saturate(0.78);
+    transform: translateX(24px) scale(0.992);
+  }
+  56% {
+    filter: saturate(1.06);
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    filter: saturate(1);
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes activeCourseSwitch {
+  0% {
+    background: #ffef5a;
+    box-shadow: inset 8px 0 0 #ff3151, 8px 8px 0 #111;
+    transform: translate(-3px, -3px);
+  }
+  100% {
+    background: #f6f6f6;
+    box-shadow: inset 5px 0 0 #ff3151;
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes courseNameSwitch {
+  0% {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .section-dots {

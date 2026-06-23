@@ -1,5 +1,5 @@
 <template>
-      <aside class="course-sidebar">
+      <aside class="course-sidebar" :class="{ 'course-sidebar-switching': courseSwitching }">
         <div class="sidebar-heading">
           <p>课程列表<span>.</span></p>
           <small>{{ courses.length }} 门课程</small>
@@ -11,7 +11,10 @@
             :key="course.id"
             type="button"
             class="course-item"
-            :class="{ active: selectedCourse?.id === course.id }"
+            :class="{
+              active: selectedCourse?.id === course.id,
+              'is-switching': courseSwitching && selectedCourse?.id === course.id
+            }"
             @click="$emit('select-course', course)"
           >
             <span class="course-number">{{ String(index + 1).padStart(2, '0') }}</span>
@@ -57,6 +60,10 @@ defineProps({
   selectedCourse: {
     type: Object,
     default: null
+  },
+  courseSwitching: {
+    type: Boolean,
+    default: false
   }
 })
 
