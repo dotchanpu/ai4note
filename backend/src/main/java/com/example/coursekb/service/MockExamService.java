@@ -53,6 +53,7 @@ public class MockExamService {
     private final DeepSeekService deepSeekService;
     private final AiGenerationTaskService aiGenerationTaskService;
     private final AiGenerationTaskRepository aiGenerationTaskRepository;
+    private final MaterialService materialService;
     private final ObjectMapper objectMapper;
     private final Path storageRoot;
 
@@ -64,6 +65,7 @@ public class MockExamService {
             DeepSeekService deepSeekService,
             AiGenerationTaskService aiGenerationTaskService,
             AiGenerationTaskRepository aiGenerationTaskRepository,
+            MaterialService materialService,
             ObjectMapper objectMapper,
             @Value("${ai4note.storage-root}") String storageRoot) {
         this.courseService = courseService;
@@ -73,6 +75,7 @@ public class MockExamService {
         this.deepSeekService = deepSeekService;
         this.aiGenerationTaskService = aiGenerationTaskService;
         this.aiGenerationTaskRepository = aiGenerationTaskRepository;
+        this.materialService = materialService;
         this.objectMapper = objectMapper;
         this.storageRoot = Paths.get(storageRoot).toAbsolutePath().normalize();
     }
@@ -124,12 +127,20 @@ public class MockExamService {
             String resultPath = storageRoot.relativize(outputPath).toString().replace('\\', '/');
             aiGenerationTaskService.markSuccess(task.getId(), resultPath);
             AiGenerationTask savedTask = aiGenerationTaskRepository.findById(task.getId()).orElse(task);
+            String title = textOrDefault(root.path("title"), course.getCourseName() + " 模拟题");
             return new MockExamGenerateResultVO(
                     AiGenerationTaskVO.from(savedTask),
-                    textOrDefault(root.path("title"), course.getCourseName() + " 模拟题"),
+                    title,
                     resultPath,
                     markdown,
-                    questions.size());
+                    questions.size(),
+                    materialService.registerGeneratedFile(
+                            request.getUserId(),
+                            courseId,
+                            title,
+                            "EXAM",
+                            "AI generated mock exam Markdown",
+                            outputPath));
         } catch (IOException exception) {
             aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
             throw new BusinessException("模拟题结果文件保存失败");

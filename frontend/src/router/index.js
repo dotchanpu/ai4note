@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import CourseMapView from '../views/course/CourseMapView.vue'
 import DashboardView from '../views/dashboard/DashboardView.vue'
+import UserSettingsView from '../views/settings/UserSettingsView.vue'
 import {
   DEFAULT_DASHBOARD_SECTION,
   dashboardSectionPath,
@@ -25,6 +26,11 @@ const routes = [
     path: '/course-map',
     name: 'course-map',
     component: CourseMapView
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: UserSettingsView
   }
 ]
 

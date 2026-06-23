@@ -72,7 +72,7 @@
       <div class="wordmark workspace-wordmark">ai4note<span>.</span></div>
       <nav class="topnav">
         <button
-          v-for="section in pageSections"
+          v-for="section in primaryPageSections"
           :key="section.id"
           type="button"
           :class="{ active: activeSection === section.id }"
@@ -82,11 +82,47 @@
         </button>
       </nav>
       <div class="account-area">
-        <span class="account-dot"></span>
-        <span>{{ currentUser.username }}</span>
+        <button type="button" class="account-user" title="个人设置" @click="router.push('/settings')">
+          <span class="account-dot"></span>
+          <span>{{ currentUser.username }}</span>
+        </button>
         <button type="button" class="plain-action" @click="logout">退出</button>
       </div>
     </header>
+
+    <section class="global-search-shell">
+      <div class="global-search-context">
+        <span>current course</span>
+        <strong>{{ selectedCourse?.courseName || '请选择课程' }}</strong>
+      </div>
+      <div class="global-search-box">
+        <el-input
+          v-model="quickSearchKeyword"
+          clearable
+          maxlength="255"
+          :disabled="!selectedCourse"
+          placeholder="搜索资料正文、标签或知识点"
+          @keyup.enter="runQuickSearch"
+        />
+        <button
+          type="button"
+          class="global-search-submit"
+          :disabled="!selectedCourse || searchLoading"
+          @click="runQuickSearch"
+        >
+          {{ searchLoading ? '搜索中' : '搜索' }}
+        </button>
+        <button
+          type="button"
+          class="global-search-detail"
+          :disabled="!selectedCourse"
+          @click="openDetailedSearch"
+        >
+          详细搜索
+        </button>
+      </div>
+      <p>快速命中当前课程内容；章节、资料类型、重点资料等筛选放在详细搜索里。</p>
+    </section>
 
     <div class="workspace-layout">
       <aside class="course-sidebar">
@@ -132,7 +168,7 @@
         <template v-if="selectedCourse">
           <nav class="section-dots" aria-label="页面章节">
             <button
-              v-for="(section, index) in pageSections"
+              v-for="(section, index) in primaryPageSections"
               :key="section.id"
               type="button"
               :class="{ active: activeSection === section.id }"
@@ -209,74 +245,6 @@
                   </div>
                   <strong>{{ item.count }}</strong>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          <section
-            id="relations"
-            class="relation-section scroll-panel"
-            :class="{ 'section-active': activeSection === 'relations' }"
-          >
-            <div class="relation-heading">
-              <div>
-                <p class="eyebrow">课程关系</p>
-                <h2>把前置课、关联课和后续课串起来<span>.</span></h2>
-              </div>
-              <p>课程关系会用于后续关联导出、知识缺口检测和跨课程复习规划。</p>
-            </div>
-
-            <div class="relation-panel">
-              <div class="relation-form">
-                <label>
-                  <span>关联课程</span>
-                  <el-select v-model="relationForm.relatedCourseId" filterable placeholder="选择一门课程">
-                    <el-option
-                      v-for="course in relationCandidateCourses"
-                      :key="course.id"
-                      :label="`${course.courseName} / ${course.courseCode || '未设置编号'}`"
-                      :value="course.id"
-                    />
-                  </el-select>
-                </label>
-                <label>
-                  <span>关系类型</span>
-                  <el-select v-model="relationForm.relationType">
-                    <el-option
-                      v-for="option in relationTypeOptions"
-                      :key="option.type"
-                      :label="option.label"
-                      :value="option.type"
-                    />
-                  </el-select>
-                </label>
-                <label>
-                  <span>关系说明</span>
-                  <el-input v-model="relationForm.reason" maxlength="255" placeholder="例如：学习本课前建议先掌握基础语法" />
-                </label>
-                <button type="button" :disabled="relationSaving" @click="saveRelation">
-                  {{ relationSaving ? '保存中…' : '添加关系' }}
-                </button>
-              </div>
-
-              <div v-loading="relationLoading" class="relation-groups">
-                <section v-for="group in relationGroups" :key="group.type" class="relation-group">
-                  <div class="relation-group-heading">
-                    <strong>{{ group.label }}</strong>
-                    <span>{{ group.items.length }} 门</span>
-                  </div>
-                  <article v-for="relation in group.items" :key="relation.id" class="relation-card">
-                    <div>
-                      <strong>{{ relation.relatedCourseName }}</strong>
-                      <p>{{ relation.relatedCourseCode || '未设置编号' }} / {{ relation.relatedSemester || '未设置学期' }}</p>
-                      <small>{{ relation.reason || '暂无关系说明' }}</small>
-                    </div>
-                    <button type="button" @click="removeRelation(relation)">删除</button>
-                  </article>
-                  <div v-if="group.items.length === 0" class="relation-empty">
-                    暂无{{ group.label }}。
-                  </div>
-                </section>
               </div>
             </div>
           </section>
@@ -378,14 +346,15 @@
                     </div>
                     <p class="material-file-name">{{ material.originalName }}</p>
                     <div class="material-card-actions">
+                      <button type="button" @click="openMaterialReader(material)">预览</button>
                       <button type="button" @click="openMaterialEditor(material)">修改信息</button>
                       <button
-                        v-if="material.fileType === 'pdf'"
+                        v-if="canParseMaterial(material)"
                         type="button"
                         :disabled="parsingMaterialId === material.id"
-                        @click="runPdfParse(material)"
+                        @click="runMaterialParse(material)"
                       >
-                        {{ parsingMaterialId === material.id ? '解析中…' : '解析 PDF' }}
+                        {{ parsingMaterialId === material.id ? '解析中…' : material.parsedChunkCount > 0 ? '重新解析' : '解析资料' }}
                       </button>
                       <button
                         v-if="material.parsedChunkCount > 0"
@@ -437,9 +406,9 @@
             <div class="search-heading">
               <div>
                 <p class="eyebrow">course search</p>
-                <h2>找到你记得的<br>那一小段<span>.</span></h2>
+                <h2>详细搜索<br>课程内容<span>.</span></h2>
               </div>
-              <p>统一检索资料标题、摘要、标签、PDF 正文，以及 AI 整理出的知识条目。</p>
+              <p>统一检索资料标题、摘要、标签、正文，以及 AI 整理出的知识条目。</p>
             </div>
 
             <div class="search-panel">
@@ -449,9 +418,9 @@
                   clearable
                   maxlength="255"
                   placeholder="输入知识点、标签、题目关键词或资料名称"
-                  @keyup.enter="runSearch"
+                  @keyup.enter="runSearch()"
                 />
-                <button type="button" :disabled="searchLoading" @click="runSearch">
+                <button type="button" :disabled="searchLoading" @click="runSearch()">
                   <span>{{ searchLoading ? '检索中…' : '开始检索' }}</span>
                   <strong>→</strong>
                 </button>
@@ -580,7 +549,7 @@
                 <p class="eyebrow light">ai knowledge studio</p>
                 <h2>不是摘词，<br>是理解后整理<span>.</span></h2>
               </div>
-              <p>选择一份已经解析的 PDF，让 DeepSeek 按语义整理定义、重点、方法、公式、例子与易错点。</p>
+              <p>选择一份已经解析的资料，让 DeepSeek 按语义整理定义、重点、方法、公式、例子与易错点。</p>
             </div>
 
             <div class="knowledge-generator">
@@ -711,56 +680,13 @@
                     {{ option.label }}
                   </button>
                 </div>
-                <div class="knowledge-mastery">
-                  <div class="knowledge-mastery-row">
-                    <label>
-                      <span>掌握状态</span>
-                      <el-select v-model="item.masteryStatus" placeholder="选择状态">
-                        <el-option
-                          v-for="option in masteryStatusOptions"
-                          :key="option.status"
-                          :label="option.label"
-                          :value="option.status"
-                        />
-                      </el-select>
-                    </label>
-                    <label>
-                      <span>掌握分数</span>
-                      <el-input-number
-                        v-model="item.masteryScore"
-                        :min="0"
-                        :max="100"
-                        :step="5"
-                        controls-position="right"
-                      />
-                    </label>
-                  </div>
-                  <el-input
-                    v-model="item.masteryNote"
-                    type="textarea"
-                    :rows="2"
-                    maxlength="300"
-                    show-word-limit
-                    placeholder="记录薄弱点、复习提醒或解题问题"
-                  />
-                  <div class="knowledge-mastery-actions">
-                    <span>最近复习：{{ formatReviewTime(item.lastReviewTime) }}</span>
-                    <button
-                      type="button"
-                      :disabled="isMasterySaving(item.id)"
-                      @click="saveKnowledgeMastery(item)"
-                    >
-                      {{ isMasterySaving(item.id) ? '保存中…' : '保存掌握状态' }}
-                    </button>
-                  </div>
-                </div>
                 <button type="button" class="danger-text" @click="confirmKnowledgeDeletion(item)">
                   删除条目
                 </button>
               </article>
               <div v-if="!knowledgeLoading && knowledgeItems.length === 0" class="knowledge-empty">
                 <strong>还没有知识条目。</strong>
-                <p>先解析一份 PDF，再让 AI 从完整语义中整理知识。</p>
+                <p>先解析一份资料，再让 AI 从完整语义中整理知识。</p>
               </div>
             </div>
           </section>
@@ -902,7 +828,6 @@
                       <span>{{ item.sourceCourseName }}</span>
                       <span>{{ relationTypeLabel(item.relationType) }}</span>
                       <span>{{ masteryStatusLabel(item.masteryStatus) }}</span>
-                      <span v-if="item.masteryScore !== null">分数 {{ item.masteryScore }}</span>
                       <span v-if="item.examQuestionCount">真题 {{ item.examQuestionCount }} 次</span>
                     </div>
                     <p>{{ item.reason }}</p>
@@ -1081,99 +1006,6 @@
                       <p>{{ selectedTeacherProfile.sourceSummary || '暂无分析结果' }}</p>
                     </section>
                   </div>
-                  <form class="mock-exam-panel" @submit.prevent="generateMockExamFromProfile">
-                    <div class="mock-exam-heading">
-                      <div>
-                        <span>AI 模拟题</span>
-                        <strong>基于画像生成</strong>
-                      </div>
-                      <button type="submit" :disabled="mockExamGenerating">
-                        {{ mockExamGenerating ? '生成中…' : '生成模拟题' }}
-                      </button>
-                    </div>
-                    <div class="mock-exam-controls">
-                      <label>
-                        <span>题数</span>
-                        <el-input-number
-                          v-model="mockExamForm.questionCount"
-                          :min="1"
-                          :max="30"
-                          :step="1"
-                          controls-position="right"
-                        />
-                      </label>
-                      <label>
-                        <span>难度</span>
-                        <el-select v-model="mockExamForm.difficultyLevel">
-                          <el-option
-                            v-for="option in reviewDifficultyOptions"
-                            :key="option.value"
-                            :label="option.label"
-                            :value="option.value"
-                          />
-                        </el-select>
-                      </label>
-                      <label>
-                        <span>补充要求</span>
-                        <el-input
-                          v-model="mockExamForm.customRequirement"
-                          maxlength="1000"
-                          placeholder="例如：增加设计题或实验题"
-                        />
-                      </label>
-                    </div>
-                    <div v-if="mockExamResult" class="mock-exam-result">
-                      <div>
-                        <strong>{{ mockExamResult.title }}</strong>
-                        <span>{{ mockExamResult.questionCount }} 题 · {{ mockExamResult.resultPath }}</span>
-                      </div>
-                      <button type="button" @click="downloadMockExam(mockExamResult.task)">
-                        下载 Markdown
-                      </button>
-                      <pre>{{ mockExamResult.content }}</pre>
-                    </div>
-                  </form>
-                  <form class="mock-exam-panel sprint-outline-panel" @submit.prevent="generateSprintOutlineFromProfile">
-                    <div class="mock-exam-heading">
-                      <div>
-                        <span>冲刺提纲</span>
-                        <strong>按出题风格规划</strong>
-                      </div>
-                      <button type="submit" :disabled="sprintOutlineGenerating">
-                        {{ sprintOutlineGenerating ? '生成中…' : '生成冲刺提纲' }}
-                      </button>
-                    </div>
-                    <div class="mock-exam-controls">
-                      <label>
-                        <span>天数</span>
-                        <el-input-number
-                          v-model="sprintOutlineForm.days"
-                          :min="1"
-                          :max="30"
-                          :step="1"
-                          controls-position="right"
-                        />
-                      </label>
-                      <label class="sprint-outline-requirement">
-                        <span>补充要求</span>
-                        <el-input
-                          v-model="sprintOutlineForm.customRequirement"
-                          maxlength="1000"
-                          placeholder="例如：最后两天集中刷综合题"
-                        />
-                      </label>
-                    </div>
-                    <div v-if="sprintOutlineResult" class="mock-exam-result">
-                      <div>
-                        <strong>{{ sprintOutlineResult.title }}</strong>
-                        <span>{{ sprintOutlineResult.dayCount }} 天 · {{ sprintOutlineResult.resultPath }}</span>
-                      </div>
-                      <button type="button" @click="downloadSprintOutline(sprintOutlineResult.task)">
-                        下载 Markdown
-                      </button>
-                      <pre>{{ sprintOutlineResult.content }}</pre>
-                    </div>
-                  </form>
                   <div v-loading="teacherEvidenceLoading" class="teacher-evidence-panel">
                     <div class="teacher-evidence-heading">
                       <strong>{{ teacherProfileEvidence.length }}</strong>
@@ -1220,7 +1052,7 @@
             </div>
 
             <div class="review-layout">
-              <form class="review-form" @submit.prevent="saveReviewProfile">
+              <form class="review-form review-form-horizontal" @submit.prevent="saveReviewProfile">
                 <label>
                   <span>配置名称</span>
                   <el-input v-model="reviewProfileForm.profileName" maxlength="128" />
@@ -1234,17 +1066,6 @@
                   <el-select v-model="reviewProfileForm.difficultyLevel">
                     <el-option
                       v-for="option in reviewDifficultyOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                </label>
-                <label>
-                  <span>输出类型</span>
-                  <el-select v-model="reviewProfileForm.outputType">
-                    <el-option
-                      v-for="option in reviewOutputOptions"
                       :key="option.value"
                       :label="option.label"
                       :value="option.value"
@@ -1271,7 +1092,7 @@
                   <el-input
                     v-model="reviewProfileForm.customRequirement"
                     type="textarea"
-                    :rows="4"
+                    :rows="2"
                     placeholder="例如：重点覆盖树、图和排序，输出适合考前两天冲刺的版本"
                   />
                 </label>
@@ -1280,12 +1101,93 @@
                     取消编辑
                   </button>
                   <button type="submit" :disabled="reviewProfileSaving">
-                    {{ reviewProfileSaving ? '保存中…' : editingReviewProfileId ? '保存修改' : '创建配置' }}
+                    {{ reviewProfileSaving ? '保存中…' : editingReviewProfileId ? '保存修改' : '保存配置' }}
                   </button>
                 </div>
               </form>
 
-              <div v-loading="reviewProfileLoading" class="review-profile-list">
+              <div class="review-generation-panel">
+                <div class="review-generation-heading">
+                  <div>
+                    <span>生成工具</span>
+                    <strong>选择要生成的复习资料</strong>
+                  </div>
+                  <p>{{ reviewOutputLabel(activeReviewOutputType) }} 会按照当前横向配置和课程知识点生成 Markdown，并在下方直接预览。</p>
+                </div>
+
+                <div class="review-output-grid">
+                  <button
+                    v-for="option in reviewOutputOptions"
+                    :key="option.value"
+                    type="button"
+                    class="review-output-card"
+                    :class="{ active: activeReviewOutputType === option.value }"
+                    :style="{ '--output-accent': option.accent }"
+                    @click="selectReviewOutput(option.value)"
+                  >
+                    <span>{{ option.label }}</span>
+                    <strong>{{ option.value === 'MOCK_EXAM' ? mockExamForm.questionCount + ' 题' : 'MD' }}</strong>
+                    <small>{{ option.hint }}</small>
+                  </button>
+                </div>
+
+                <div class="review-generator-surface">
+                  <form class="review-generator-controls" @submit.prevent="generateSelectedReviewAsset">
+                    <label v-if="activeReviewOutputType === 'MOCK_EXAM'">
+                      <span>题数</span>
+                      <el-input-number
+                        v-model="mockExamForm.questionCount"
+                        :min="1"
+                        :max="30"
+                        :step="1"
+                        controls-position="right"
+                      />
+                    </label>
+                    <label v-if="activeReviewOutputType === 'MOCK_EXAM'">
+                      <span>难度</span>
+                      <el-select v-model="mockExamForm.difficultyLevel">
+                        <el-option
+                          v-for="option in reviewDifficultyOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                    </label>
+                    <label class="review-generator-requirement">
+                      <span>本次补充要求</span>
+                      <el-input
+                        v-model="activeReviewCustomRequirement"
+                        maxlength="1000"
+                        placeholder="可留空，默认使用上方自定义要求"
+                      />
+                    </label>
+                    <button type="submit" :disabled="isSelectedReviewGenerating">
+                      {{ isSelectedReviewGenerating ? '生成中…' : '生成' + reviewOutputLabel(activeReviewOutputType) }}
+                    </button>
+                  </form>
+
+                  <div v-if="activeReviewResult" class="review-result-panel">
+                    <div class="review-result-heading">
+                      <div>
+                        <span>{{ reviewOutputLabel(activeReviewResult.outputType) }}</span>
+                        <strong>{{ activeReviewResult.title }}</strong>
+                        <small>{{ activeReviewResult.resultPath }}</small>
+                      </div>
+                      <button type="button" @click="downloadReviewResult(activeReviewResult)">
+                        下载 Markdown
+                      </button>
+                    </div>
+                    <div class="markdown-preview" v-html="renderMarkdown(activeReviewResult.content)"></div>
+                  </div>
+                  <div v-else class="review-result-empty">
+                    <strong>生成后会在这里展示 Markdown 预览。</strong>
+                    <p>标题、列表、表格、勾选项都会按 Markdown 结构渲染。</p>
+                  </div>
+                </div>
+              </div>
+
+              <div v-loading="reviewProfileLoading" class="review-profile-list review-profile-row">
                 <article v-for="profile in reviewProfiles" :key="profile.id" class="review-profile-card">
                   <div class="review-card-top">
                     <span>{{ reviewOutputLabel(profile.outputType) }}</span>
@@ -1308,161 +1210,8 @@
                   class="review-empty"
                 >
                   <strong>还没有复习配置。</strong>
-                  <p>先创建一个目标，后续生成复习资料时可以复用。</p>
+                  <p>先保存一个横向配置，后续生成复习资料时可以复用。</p>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          <section
-            id="ai-config"
-            class="ai-config-section scroll-panel"
-            :class="{ 'section-active': activeSection === 'ai-config' }"
-          >
-            <div class="ai-config-heading">
-              <div>
-                <p class="eyebrow">AI 配置</p>
-                <h2>管理模型供应商<span>.</span></h2>
-              </div>
-              <p>保存供应商、Base URL、模型名称和 API Key 环境变量别名。系统不会保存明文 API Key。</p>
-            </div>
-
-            <div class="ai-config-status">
-              <div>
-                <span>默认 DeepSeek</span>
-                <strong>{{ aiDefaultStatus?.configured ? '已配置' : '未配置' }}</strong>
-              </div>
-              <div>
-                <span>默认模型</span>
-                <strong>{{ aiDefaultStatus?.defaultModel || '未读取' }}</strong>
-              </div>
-              <div>
-                <span>配置数量</span>
-                <strong>{{ aiProviders.length }}</strong>
-              </div>
-            </div>
-
-            <div class="ai-config-layout">
-              <form class="ai-provider-form" @submit.prevent="saveAiProvider">
-                <label>
-                  <span>供应商名称</span>
-                  <el-input v-model="aiProviderForm.providerName" maxlength="64" />
-                </label>
-                <label>
-                  <span>Base URL</span>
-                  <el-input v-model="aiProviderForm.baseUrl" maxlength="255" />
-                </label>
-                <label>
-                  <span>模型名称</span>
-                  <el-input v-model="aiProviderForm.modelName" maxlength="128" />
-                </label>
-                <label>
-                  <span>API Key 环境变量别名</span>
-                  <el-input v-model="aiProviderForm.apiKeyAlias" maxlength="128" placeholder="例如：DEEPSEEK_API_KEY" />
-                </label>
-                <label class="ai-provider-switch">
-                  <el-switch v-model="aiProviderForm.enabled" />
-                  <span>启用配置</span>
-                </label>
-                <p>这里只保存环境变量名，不保存 API Key 明文。</p>
-                <div class="ai-provider-actions">
-                  <button v-if="editingAiProviderId" type="button" @click="resetAiProviderForm">
-                    取消编辑
-                  </button>
-                  <button type="submit" :disabled="aiProviderSaving">
-                    {{ aiProviderSaving ? '保存中…' : editingAiProviderId ? '保存修改' : '创建配置' }}
-                  </button>
-                </div>
-              </form>
-
-              <div v-loading="aiProviderLoading" class="ai-provider-list">
-                <article v-for="config in aiProviders" :key="config.id" class="ai-provider-card">
-                  <div class="ai-provider-card-top">
-                    <span>{{ config.enabled ? '已启用' : '已停用' }}</span>
-                    <strong>{{ config.providerName }}</strong>
-                  </div>
-                  <h3>{{ config.modelName }}</h3>
-                  <p>{{ config.baseUrl }}</p>
-                  <div class="ai-provider-meta">
-                    <span>{{ config.apiKeyAlias || '未设置 Key 别名' }}</span>
-                  </div>
-                  <div class="ai-provider-card-actions">
-                    <button type="button" @click="editAiProvider(config)">编辑</button>
-                    <button type="button" @click="removeAiProvider(config)">删除</button>
-                  </div>
-                </article>
-                <div v-if="!aiProviderLoading && aiProviders.length === 0" class="ai-provider-empty">
-                  <strong>还没有自定义 AI 配置。</strong>
-                  <p>默认 DeepSeek 环境变量配置仍然可用。</p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section
-            id="ai-tasks"
-            class="ai-task-section scroll-panel"
-            :class="{ 'section-active': activeSection === 'ai-tasks' }"
-          >
-            <div class="ai-task-heading">
-              <div>
-                <p class="eyebrow">AI 任务记录</p>
-                <h2>追踪生成任务<span>.</span></h2>
-              </div>
-              <p>保存教师画像、知识整理和后续复习生成任务的提示词、状态、结果路径和失败原因，便于排查与复用。</p>
-            </div>
-
-            <div class="ai-task-status">
-              <div>
-                <span>任务总数</span>
-                <strong>{{ aiTaskStats.total }}</strong>
-              </div>
-              <div>
-                <span>运行中</span>
-                <strong>{{ aiTaskStats.running }}</strong>
-              </div>
-              <div>
-                <span>失败</span>
-                <strong>{{ aiTaskStats.failed }}</strong>
-              </div>
-              <button type="button" :disabled="aiTaskLoading" @click="loadAiGenerationTasks">
-                {{ aiTaskLoading ? '刷新中…' : '刷新记录' }}
-              </button>
-            </div>
-
-            <div v-loading="aiTaskLoading" class="ai-task-list">
-              <article v-for="task in aiGenerationTasks" :key="task.id" class="ai-task-card">
-                <div class="ai-task-card-top">
-                  <span :class="`ai-task-status-${task.status?.toLowerCase() || 'pending'}`">
-                    {{ aiTaskStatusLabel(task.status) }}
-                  </span>
-                  <strong>#{{ task.id }}</strong>
-                </div>
-                <h3>{{ aiTaskTypeLabel(task.taskType) }}</h3>
-                <p>{{ task.prompt || '未保存提示词' }}</p>
-                <div class="ai-task-meta">
-                  <span>{{ formatAiTaskTime(task.createTime) }}</span>
-                  <span v-if="task.finishTime">完成：{{ formatAiTaskTime(task.finishTime) }}</span>
-                  <span v-if="task.resultPath">{{ task.resultPath }}</span>
-                </div>
-                <small v-if="task.errorMessage">{{ task.errorMessage }}</small>
-                <div
-                  v-if="task.taskType === 'MOCK_EXAM' && task.status === 'SUCCESS' && task.resultPath"
-                  class="ai-task-actions"
-                >
-                  <button type="button" @click="downloadMockExam(task)">下载模拟题</button>
-                </div>
-                <div
-                  v-if="task.taskType === 'REVIEW_GENERATION' && task.status === 'SUCCESS' && task.resultPath?.startsWith('sprint-outlines/')"
-                  class="ai-task-actions"
-                >
-                  <button type="button" @click="downloadSprintOutline(task)">下载冲刺提纲</button>
-                </div>
-              </article>
-
-              <div v-if="!aiTaskLoading && aiGenerationTasks.length === 0" class="ai-task-empty">
-                <strong>还没有 AI 生成任务。</strong>
-                <p>运行知识整理或教师画像分析后，这里会记录任务状态。</p>
               </div>
             </div>
           </section>
@@ -2008,40 +1757,71 @@
 
   <el-dialog
     v-model="textPreviewVisible"
-    class="studio-dialog studio-dialog-text"
+    class="studio-dialog studio-dialog-text material-reader-dialog"
     modal-class="studio-dialog-overlay"
-    width="880px"
+    width="1040px"
     :show-close="false"
   >
     <template #header>
       <div class="dialog-heading">
         <div>
-          <p>parsed text / 解析文本</p>
-          <h2>{{ previewMaterial?.title || '资料文本' }}<span>.</span></h2>
+          <p>reader / 资料阅读器</p>
+          <h2>{{ previewMaterial?.title || '资料预览' }}<span>.</span></h2>
         </div>
         <button type="button" class="dialog-close" aria-label="关闭" @click="textPreviewVisible = false">
           ×
         </button>
       </div>
     </template>
-    <div v-loading="textChunkLoading" class="text-preview">
-      <section v-for="(chunk, index) in textChunks" :key="chunk.id" class="text-page">
-        <div class="text-page-marker">
-          <span>{{ String(index + 1).padStart(2, '0') }}</span>
-        </div>
-        <div class="text-page-content">
-          <div class="text-page-heading">
-            <strong>第 {{ chunk.pageNo || index + 1 }} 页</strong>
-            <span>{{ chunk.wordCount || chunk.content?.length || 0 }} 字符</span>
+    <div v-loading="textChunkLoading" class="text-preview material-reader">
+      <iframe
+        v-if="materialPreviewMode === 'pdf'"
+        class="material-reader-frame"
+        :src="materialReaderUrl"
+        title="资料 PDF 预览"
+      ></iframe>
+
+      <article v-else-if="materialPreviewMode === 'markdown'" class="material-reader-markdown">
+        <div v-html="renderMarkdown(materialPreviewContent)"></div>
+      </article>
+
+      <article v-else-if="materialPreviewMode === 'text'" class="material-reader-plain">
+        <pre>{{ materialPreviewContent }}</pre>
+      </article>
+
+      <div v-else-if="materialPreviewMode === 'chunks'" class="material-reader-chunks">
+        <section v-for="(chunk, index) in textChunks" :key="chunk.id" class="text-page">
+          <div class="text-page-marker">
+            <span>{{ String(index + 1).padStart(2, '0') }}</span>
           </div>
-          <div class="text-page-body">{{ chunk.content }}</div>
-        </div>
-      </section>
-      <el-empty v-if="!textChunkLoading && textChunks.length === 0" description="暂无解析文本" />
+          <div class="text-page-content">
+            <div class="text-page-heading">
+              <strong>第 {{ chunk.pageNo || index + 1 }} 页</strong>
+              <span>{{ chunk.wordCount || chunk.content?.length || 0 }} 字符</span>
+            </div>
+            <div class="text-page-body">{{ chunk.content }}</div>
+          </div>
+        </section>
+        <el-empty v-if="!textChunkLoading && textChunks.length === 0" description="暂无解析文本" />
+      </div>
+
+      <div v-else class="material-reader-download">
+        <strong>该类型暂不支持网页内直接预览</strong>
+        <p>可以下载后用本地阅读器打开：{{ previewMaterial?.originalName || previewMaterial?.title }}</p>
+        <button type="button" @click="downloadPreviewMaterial">下载资料</button>
+      </div>
     </div>
     <template #footer>
       <div class="dialog-footer text-dialog-footer">
-        <span>共 {{ textChunks.length }} 个文本块</span>
+        <span>{{ materialReaderFooter }}</span>
+        <button
+          v-if="canDownloadPreviewMaterial"
+          type="button"
+          class="dialog-button dialog-button-ghost"
+          @click="downloadPreviewMaterial"
+        >
+          下载原文件
+        </button>
         <button type="button" class="dialog-button dialog-button-primary" @click="textPreviewVisible = false">
           <span>阅读完成</span>
           <strong>→</strong>
@@ -2138,9 +1918,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ExamMappingPanel from '../../components/dashboard/ExamMappingPanel.vue'
+import { dashboardSectionPath, normalizeDashboardSection } from './dashboardPages'
 import { login, register } from '../../api/auth'
 import {
   createChapter,
@@ -2162,7 +1944,9 @@ import {
   listSimilarMaterials,
   listMaterials,
   listTextChunks,
-  parsePdf,
+  materialFileUrl,
+  parseMaterial,
+  previewMaterialContent,
   updateMaterial,
   uploadMaterialsBatch
 } from '../../api/material'
@@ -2211,7 +1995,9 @@ import {
 import {
   createReviewProfile,
   deleteReviewProfile,
+  generateReviewAsset,
   listReviewProfiles,
+  reviewAssetDownloadUrl,
   updateReviewProfile
 } from '../../api/review'
 import {
@@ -2223,6 +2009,8 @@ import {
   updateAiProvider
 } from '../../api/ai'
 
+const router = useRouter()
+const route = useRoute()
 const currentUser = ref(null)
 const authMode = ref('login')
 const authLoading = ref(false)
@@ -2251,6 +2039,7 @@ const teacherConfidenceScoring = ref(false)
 const teacherProfileReanalyzing = ref(false)
 const mockExamGenerating = ref(false)
 const sprintOutlineGenerating = ref(false)
+const reviewAssetGenerating = ref(false)
 const reviewProfileLoading = ref(false)
 const reviewProfileSaving = ref(false)
 const aiProviderLoading = ref(false)
@@ -2294,6 +2083,7 @@ const teacherProfiles = ref([])
 const teacherProfileEvidence = ref([])
 const mockExamResult = ref(null)
 const sprintOutlineResult = ref(null)
+const reviewAssetResult = ref(null)
 const reviewProfiles = ref([])
 const aiProviders = ref([])
 const aiGenerationTasks = ref([])
@@ -2318,12 +2108,15 @@ const previewMaterial = ref(null)
 const similarSourceMaterial = ref(null)
 const similarMaterialResults = ref([])
 const textChunks = ref([])
-const activeSection = ref('overview')
+const materialPreviewContent = ref('')
+const materialPreviewMode = ref('text')
+const activeSection = ref(normalizeDashboardSection(route.params.section))
 const examPreferredMaterialId = ref(null)
+const activeReviewOutputType = ref('REVIEW_NOTE')
+const quickSearchKeyword = ref('')
 
 const pageSections = [
   { id: 'overview', label: '概览', title: '课程概览' },
-  { id: 'relations', label: '关系', title: '课程关系' },
   { id: 'chapters', label: '章节', title: '章节路径' },
   { id: 'materials', label: '资料', title: '课程资料' },
   { id: 'search', label: '检索', title: '课程检索' },
@@ -2331,11 +2124,11 @@ const pageSections = [
   { id: 'gaps', label: '缺口', title: '知识缺口' },
   { id: 'teacher', label: '画像', title: '教师画像' },
   { id: 'review', label: '复习', title: '复习配置' },
-  { id: 'ai-config', label: 'AI', title: 'AI 配置' },
-  { id: 'ai-tasks', label: '任务', title: 'AI 任务记录' },
   { id: 'exam', label: '真题', title: '真题映射' },
   { id: 'export', label: '导出', title: '知识包导出' }
 ]
+
+const primaryPageSections = computed(() => pageSections.filter(section => section.id !== 'search'))
 
 const materialTypeOptions = [
   { type: 'SLIDE', label: '课件', icon: 'PPT' },
@@ -2385,6 +2178,24 @@ const parsedMaterials = computed(() => materials.value.filter(
   material => material.parsedChunkCount > 0
 ))
 
+const materialReaderUrl = computed(() => (
+  previewMaterial.value && currentUser.value
+    ? materialFileUrl(previewMaterial.value.id, currentUser.value.id, 'inline')
+    : ''
+))
+
+const canDownloadPreviewMaterial = computed(() => Boolean(previewMaterial.value && currentUser.value))
+
+const materialReaderFooter = computed(() => {
+  if (!previewMaterial.value) return '未选择资料'
+  const type = (previewMaterial.value.fileType || 'FILE').toUpperCase()
+  if (materialPreviewMode.value === 'chunks') return `共 ${textChunks.value.length} 个文本块`
+  if (materialPreviewMode.value === 'markdown') return `${type} / Markdown 预览`
+  if (materialPreviewMode.value === 'text') return `${type} / 文本预览`
+  if (materialPreviewMode.value === 'pdf') return 'PDF 原文件预览'
+  return `${type} / 原文件`
+})
+
 const knowledgeTypeOptions = [
   { type: 'DEFINITION', label: '定义' },
   { type: 'KEY_POINT', label: '重点' },
@@ -2408,11 +2219,11 @@ const reviewDifficultyOptions = [
 ]
 
 const reviewOutputOptions = [
-  { value: 'REVIEW_NOTE', label: '复习笔记' },
-  { value: 'OUTLINE', label: '复习提纲' },
-  { value: 'FLASHCARDS', label: '记忆卡片' },
-  { value: 'MOCK_EXAM', label: '模拟题' },
-  { value: 'CHECKLIST', label: '检查清单' }
+  { value: 'REVIEW_NOTE', label: '复习笔记', hint: '按知识点整理可直接背诵的笔记', accent: '#ffb21c' },
+  { value: 'OUTLINE', label: '复习提纲', hint: '生成章节化复习路径和优先级', accent: '#14cbea' },
+  { value: 'FLASHCARDS', label: '记忆卡片', hint: '整理成问答卡片，适合快速自测', accent: '#0de0c0' },
+  { value: 'MOCK_EXAM', label: '模拟题', hint: '按教师画像和考点生成练习题', accent: '#ff3151' },
+  { value: 'CHECKLIST', label: '检查清单', hint: '输出复习任务勾选清单', accent: '#ad93ff' }
 ]
 
 const relationTypeOptions = [
@@ -2439,6 +2250,43 @@ const exportRelationOptions = computed(() => relationTypeOptions.map(option => (
   ...option,
   count: courseRelations.value.filter(item => item.relationType === option.type).length
 })))
+
+const activeReviewCustomRequirement = computed({
+  get() {
+    if (activeReviewOutputType.value === 'MOCK_EXAM') {
+      return mockExamForm.customRequirement
+    }
+    if (activeReviewOutputType.value === 'OUTLINE') {
+      return sprintOutlineForm.customRequirement
+    }
+    return reviewProfileForm.customRequirement
+  },
+  set(value) {
+    if (activeReviewOutputType.value === 'MOCK_EXAM') {
+      mockExamForm.customRequirement = value
+    } else if (activeReviewOutputType.value === 'OUTLINE') {
+      sprintOutlineForm.customRequirement = value
+    } else {
+      reviewProfileForm.customRequirement = value
+    }
+  }
+})
+
+const isSelectedReviewGenerating = computed(() => (
+  activeReviewOutputType.value === 'MOCK_EXAM'
+    ? mockExamGenerating.value
+    : reviewAssetGenerating.value
+))
+
+const activeReviewResult = computed(() => {
+  if (activeReviewOutputType.value === 'MOCK_EXAM') {
+    return normalizeReviewResult(mockExamResult.value, 'MOCK_EXAM')
+  }
+  if (reviewAssetResult.value?.outputType !== activeReviewOutputType.value) {
+    return null
+  }
+  return normalizeReviewResult(reviewAssetResult.value, activeReviewOutputType.value)
+})
 
 const gapStats = computed(() => ({
   total: gapItems.value.length,
@@ -2591,10 +2439,31 @@ onMounted(() => {
   }
 })
 
+watch(
+  () => route.params.section,
+  (section) => {
+    activeSection.value = normalizeDashboardSection(section)
+  }
+)
+
 function scrollToSection(sectionId) {
   if (pageSections.some(section => section.id === sectionId)) {
     activeSection.value = sectionId
+    if (route.name === 'dashboard-section' && route.params.section !== sectionId) {
+      router.replace(dashboardSectionPath(sectionId))
+    }
   }
+}
+
+function openDetailedSearch() {
+  if (!selectedCourse.value) {
+    ElMessage.warning('请先选择课程')
+    return
+  }
+  if (quickSearchKeyword.value.trim() && quickSearchKeyword.value.trim() !== searchForm.keyword) {
+    searchForm.keyword = quickSearchKeyword.value.trim()
+  }
+  activeSection.value = 'search'
 }
 
 async function submitAuth() {
@@ -2649,7 +2518,7 @@ async function loadCourses() {
 
 async function selectCourse(course) {
   selectedCourse.value = course
-  activeSection.value = 'overview'
+  activeSection.value = normalizeDashboardSection(route.params.section || activeSection.value)
   examPreferredMaterialId.value = null
   resetRelationForm()
   resetGapForm()
@@ -2970,19 +2839,29 @@ async function runTeacherProfileReanalysis() {
 }
 
 async function generateMockExamFromProfile() {
-  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  if (!selectedCourse.value || !currentUser.value) return
+  const teacherProfileId = reviewProfileForm.teacherProfileId || selectedTeacherProfile.value?.id
+  if (!teacherProfileId) {
+    ElMessage.warning('请先在复习配置中选择教师画像')
+    return
+  }
   mockExamGenerating.value = true
   try {
     const result = await generateMockExam(selectedCourse.value.id, {
       userId: currentUser.value.id,
-      teacherProfileId: selectedTeacherProfile.value.id,
+      teacherProfileId,
       questionCount: mockExamForm.questionCount,
       difficultyLevel: mockExamForm.difficultyLevel,
       model: 'deepseek-v4-flash',
-      customRequirement: mockExamForm.customRequirement.trim() || null
+      customRequirement: mockExamForm.customRequirement.trim()
+        || reviewProfileForm.customRequirement.trim()
+        || null
     })
     mockExamResult.value = result
+    activeReviewOutputType.value = 'MOCK_EXAM'
+    addGeneratedMaterial(result.material)
     await loadAiGenerationTasks()
+    await loadCourseStats()
     ElMessage.success(`已生成 ${result.questionCount} 道模拟题`)
   } catch (error) {
     await loadAiGenerationTasks()
@@ -2998,17 +2877,25 @@ function downloadMockExam(task) {
 }
 
 async function generateSprintOutlineFromProfile() {
-  if (!selectedCourse.value || !currentUser.value || !selectedTeacherProfile.value) return
+  if (!selectedCourse.value || !currentUser.value) return
+  const teacherProfileId = reviewProfileForm.teacherProfileId || selectedTeacherProfile.value?.id
+  if (!teacherProfileId) {
+    ElMessage.warning('请先在复习配置中选择教师画像')
+    return
+  }
   sprintOutlineGenerating.value = true
   try {
     const result = await generateSprintOutline(selectedCourse.value.id, {
       userId: currentUser.value.id,
-      teacherProfileId: selectedTeacherProfile.value.id,
+      teacherProfileId,
       days: sprintOutlineForm.days,
       model: 'deepseek-v4-flash',
-      customRequirement: sprintOutlineForm.customRequirement.trim() || null
+      customRequirement: sprintOutlineForm.customRequirement.trim()
+        || reviewProfileForm.customRequirement.trim()
+        || null
     })
     sprintOutlineResult.value = result
+    activeReviewOutputType.value = 'OUTLINE'
     await loadAiGenerationTasks()
     ElMessage.success(`已生成 ${result.dayCount} 天冲刺提纲`)
   } catch (error) {
@@ -3022,6 +2909,56 @@ async function generateSprintOutlineFromProfile() {
 function downloadSprintOutline(task) {
   if (!task || !currentUser.value) return
   window.open(sprintOutlineDownloadUrl(task.id, currentUser.value.id), '_blank')
+}
+
+function selectReviewOutput(outputType) {
+  activeReviewOutputType.value = outputType
+  reviewProfileForm.outputType = outputType
+}
+
+async function generateSelectedReviewAsset() {
+  if (activeReviewOutputType.value === 'MOCK_EXAM') {
+    await generateMockExamFromProfile()
+    return
+  }
+  await generateReviewAssetFromProfile()
+}
+
+async function generateReviewAssetFromProfile() {
+  if (!selectedCourse.value || !currentUser.value) return
+  reviewAssetGenerating.value = true
+  try {
+    const result = await generateReviewAsset(selectedCourse.value.id, {
+      userId: currentUser.value.id,
+      teacherProfileId: reviewProfileForm.teacherProfileId || selectedTeacherProfile.value?.id || null,
+      outputType: activeReviewOutputType.value,
+      difficultyLevel: reviewProfileForm.difficultyLevel,
+      includePrerequisites: reviewProfileForm.includePrerequisites,
+      model: 'deepseek-v4-flash',
+      customRequirement: activeReviewCustomRequirement.value.trim()
+        || reviewProfileForm.customRequirement.trim()
+        || null
+    })
+    reviewAssetResult.value = result
+    addGeneratedMaterial(result.material)
+    await loadAiGenerationTasks()
+    await loadCourseStats()
+    ElMessage.success(`${reviewOutputLabel(result.outputType)}已生成`)
+  } catch (error) {
+    await loadAiGenerationTasks()
+    ElMessage.error(error.message)
+  } finally {
+    reviewAssetGenerating.value = false
+  }
+}
+
+function downloadReviewResult(result) {
+  if (!result?.task || !currentUser.value) return
+  if (result.outputType === 'MOCK_EXAM') {
+    downloadMockExam(result.task)
+    return
+  }
+  window.open(reviewAssetDownloadUrl(result.task.id, currentUser.value.id), '_blank')
 }
 
 async function loadReviewProfiles() {
@@ -3051,7 +2988,7 @@ async function saveReviewProfile() {
       profileName: reviewProfileForm.profileName.trim(),
       target: reviewProfileForm.target.trim() || null,
       difficultyLevel: reviewProfileForm.difficultyLevel,
-      outputType: reviewProfileForm.outputType,
+      outputType: activeReviewOutputType.value,
       includePrerequisites: reviewProfileForm.includePrerequisites,
       customRequirement: reviewProfileForm.customRequirement.trim() || null
     }
@@ -3078,6 +3015,7 @@ function editReviewProfile(profile) {
   reviewProfileForm.target = profile.target || ''
   reviewProfileForm.difficultyLevel = profile.difficultyLevel || 'MEDIUM'
   reviewProfileForm.outputType = profile.outputType || 'REVIEW_NOTE'
+  activeReviewOutputType.value = reviewProfileForm.outputType
   reviewProfileForm.includePrerequisites = profile.includePrerequisites !== false
   reviewProfileForm.teacherProfileId = profile.teacherProfileId || null
   reviewProfileForm.customRequirement = profile.customRequirement || ''
@@ -3455,7 +3393,7 @@ async function saveKnowledgeMastery(item, masteryStatus) {
     item.masteryNote = status.note
     item.lastReviewTime = status.lastReviewTime
     item.masteryUpdateTime = status.updateTime
-    ElMessage.success('???????')
+    ElMessage.success('掌握状态已更新')
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -3484,22 +3422,38 @@ function knowledgeTypeLabel(type) {
   return knowledgeTypeOptions.find(option => option.type === type)?.label || type
 }
 
-async function runSearch() {
+async function runSearch(options = {}) {
+  const { fromQuick = false, showDetail = false } = options
+  if (!selectedCourse.value) {
+    ElMessage.warning('请先选择课程')
+    return
+  }
   if (!searchForm.keyword.trim()) {
     ElMessage.warning('请输入检索关键词')
     return
   }
   searchLoading.value = true
   try {
+    const keyword = searchForm.keyword.trim()
+    searchForm.keyword = keyword
+    quickSearchKeyword.value = keyword
+    if (fromQuick) {
+      searchForm.chapterId = null
+      searchForm.materialType = null
+      searchForm.isKey = false
+    }
     searchResults.value = await searchMaterials({
       userId: currentUser.value.id,
       courseId: selectedCourse.value.id,
-      keyword: searchForm.keyword.trim(),
+      keyword,
       chapterId: searchForm.chapterId || undefined,
       materialType: searchForm.materialType || undefined,
       isKey: searchForm.isKey
     })
     searchHasRun.value = true
+    if (showDetail) {
+      activeSection.value = 'search'
+    }
     await loadSearchRecords()
   } catch (error) {
     ElMessage.error(error.message)
@@ -3508,8 +3462,18 @@ async function runSearch() {
   }
 }
 
+async function runQuickSearch() {
+  if (!quickSearchKeyword.value.trim()) {
+    ElMessage.warning('请输入检索关键词')
+    return
+  }
+  searchForm.keyword = quickSearchKeyword.value.trim()
+  await runSearch({ fromQuick: true, showDetail: true })
+}
+
 function resetSearch() {
   searchForm.keyword = ''
+  quickSearchKeyword.value = ''
   searchForm.chapterId = null
   searchForm.materialType = null
   searchForm.isKey = false
@@ -3567,6 +3531,7 @@ function clearTeacherProfileState() {
   teacherProfiles.value = []
   teacherProfileEvidence.value = []
   selectedTeacherProfile.value = null
+  reviewAssetResult.value = null
   resetTeacherProfileForm()
   resetMockExamForm()
   resetSprintOutlineForm()
@@ -3580,6 +3545,7 @@ function resetReviewProfileForm() {
   reviewProfileForm.target = ''
   reviewProfileForm.difficultyLevel = 'MEDIUM'
   reviewProfileForm.outputType = 'REVIEW_NOTE'
+  activeReviewOutputType.value = 'REVIEW_NOTE'
   reviewProfileForm.includePrerequisites = true
   reviewProfileForm.teacherProfileId = null
   reviewProfileForm.customRequirement = ''
@@ -3670,6 +3636,105 @@ function reviewDifficultyLabel(value) {
 
 function reviewOutputLabel(value) {
   return reviewOutputOptions.find(option => option.value === value)?.label || value
+}
+
+function normalizeReviewResult(result, outputType) {
+  if (!result) return null
+  return {
+    ...result,
+    outputType,
+    content: result.content || ''
+  }
+}
+
+function renderMarkdown(markdown) {
+  if (!markdown) return ''
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const html = []
+  let listOpen = false
+  let tableBuffer = []
+
+  const closeList = () => {
+    if (listOpen) {
+      html.push('</ul>')
+      listOpen = false
+    }
+  }
+  const flushTable = () => {
+    if (tableBuffer.length === 0) return
+    html.push(renderMarkdownTable(tableBuffer))
+    tableBuffer = []
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      closeList()
+      flushTable()
+      continue
+    }
+    if (trimmed.includes('|') && trimmed.startsWith('|')) {
+      closeList()
+      tableBuffer.push(trimmed)
+      continue
+    }
+    flushTable()
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (heading) {
+      closeList()
+      const level = heading[1].length
+      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`)
+      continue
+    }
+    const checkbox = trimmed.match(/^[-*]\s+\[( |x|X)]\s+(.+)$/)
+    if (checkbox) {
+      if (!listOpen) {
+        html.push('<ul>')
+        listOpen = true
+      }
+      const checked = checkbox[1].toLowerCase() === 'x'
+      html.push(`<li class="markdown-check ${checked ? 'checked' : ''}">${inlineMarkdown(checkbox[2])}</li>`)
+      continue
+    }
+    const listItem = trimmed.match(/^[-*]\s+(.+)$/)
+    if (listItem) {
+      if (!listOpen) {
+        html.push('<ul>')
+        listOpen = true
+      }
+      html.push(`<li>${inlineMarkdown(listItem[1])}</li>`)
+      continue
+    }
+    closeList()
+    html.push(`<p>${inlineMarkdown(trimmed)}</p>`)
+  }
+  closeList()
+  flushTable()
+  return html.join('')
+}
+
+function renderMarkdownTable(lines) {
+  const rows = lines
+    .filter(line => !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line))
+    .map(line => line.replace(/^\||\|$/g, '').split('|').map(cell => inlineMarkdown(cell.trim())))
+  if (rows.length === 0) return ''
+  const [head, ...body] = rows
+  return `<table><thead><tr>${head.map(cell => `<th>${cell}</th>`).join('')}</tr></thead><tbody>${body.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+}
+
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function aiTaskTypeLabel(type) {
@@ -3845,10 +3910,10 @@ function createUploadDraft(uploadFile) {
   }
 }
 
-async function runPdfParse(material) {
+async function runMaterialParse(material) {
   parsingMaterialId.value = material.id
   try {
-    const result = await parsePdf(material.id, currentUser.value.id)
+    const result = await parseMaterial(material.id, currentUser.value.id)
     material.parsedChunkCount = result.chunkCount
     await loadCourseStats()
     await checkSimilarMaterials([material])
@@ -3904,12 +3969,69 @@ async function checkSimilarMaterials(sourceMaterials) {
 
 function openSimilarMaterial(material) {
   similarDialogVisible.value = false
-  openMaterialEditor(material)
+  openMaterialReader(material)
+}
+
+function addGeneratedMaterial(material) {
+  if (!material?.id) return
+  const index = materials.value.findIndex(item => item.id === material.id)
+  if (index >= 0) {
+    materials.value.splice(index, 1, material)
+    return
+  }
+  materials.value.unshift(material)
+}
+
+function materialFileType(material) {
+  return (material?.fileType || '').toLowerCase()
+}
+
+function canParseMaterial(material) {
+  return ['pdf', 'doc', 'docx', 'md', 'txt'].includes(materialFileType(material))
+}
+
+async function openMaterialReader(material) {
+  if (!material || !currentUser.value) return
+  previewMaterial.value = material
+  textPreviewVisible.value = true
+  textChunkLoading.value = true
+  textChunks.value = []
+  materialPreviewContent.value = ''
+  const fileType = materialFileType(material)
+  try {
+    if (fileType === 'pdf') {
+      materialPreviewMode.value = 'pdf'
+      return
+    }
+    if (['md', 'txt', 'doc', 'docx'].includes(fileType)) {
+      materialPreviewMode.value = fileType === 'md' ? 'markdown' : 'text'
+      materialPreviewContent.value = await previewMaterialContent(material.id, currentUser.value.id)
+      return
+    }
+    if (material.parsedChunkCount > 0) {
+      materialPreviewMode.value = 'chunks'
+      textChunks.value = await listTextChunks(material.id, currentUser.value.id)
+      return
+    }
+    materialPreviewMode.value = 'download'
+  } catch (error) {
+    materialPreviewMode.value = 'download'
+    ElMessage.error(error.message)
+  } finally {
+    textChunkLoading.value = false
+  }
+}
+
+function downloadPreviewMaterial() {
+  if (!previewMaterial.value || !currentUser.value) return
+  window.open(materialFileUrl(previewMaterial.value.id, currentUser.value.id, 'attachment'), '_blank')
 }
 
 async function showParsedText(material) {
   previewMaterial.value = material
   textPreviewVisible.value = true
+  materialPreviewMode.value = 'chunks'
+  materialPreviewContent.value = ''
   textChunkLoading.value = true
   try {
     textChunks.value = await listTextChunks(material.id, currentUser.value.id)
@@ -4485,7 +4607,7 @@ button {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
   height: 86px;
   display: grid;
   grid-template-columns: 240px 1fr auto;
@@ -4495,6 +4617,109 @@ button {
   border-bottom: 1px solid #111;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(14px);
+}
+
+.global-search-shell {
+  position: sticky;
+  top: 86px;
+  z-index: 25;
+  display: grid;
+  grid-template-columns: 200px minmax(360px, 720px);
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 54px;
+  padding: 8px 32px;
+  border-bottom: 1px solid #111;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+.global-search-context span,
+.global-search-shell > p {
+  margin: 0;
+  color: #555;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.global-search-context strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid #111;
+  background: #fff;
+  box-shadow: none;
+}
+
+:deep(.global-search-box .el-input__wrapper) {
+  min-height: 34px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:deep(.global-search-box .el-input__inner) {
+  color: #111;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.global-search-submit,
+.global-search-detail {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s, color 0.2s;
+}
+
+.global-search-submit {
+  background: #111;
+  color: #fff;
+}
+
+.global-search-detail {
+  background: #fff;
+  color: #111;
+}
+
+.global-search-submit:hover,
+.global-search-detail:hover {
+  transform: translateY(-2px);
+}
+
+.global-search-detail:hover {
+  background: #111;
+  color: #fff;
+}
+
+.global-search-submit:disabled,
+.global-search-detail:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.global-search-shell > p {
+  display: none;
 }
 
 .workspace-wordmark {
@@ -4540,9 +4765,27 @@ button {
   font-weight: 700;
 }
 
+.account-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.account-user:hover {
+  background: #111;
+  color: #fff;
+}
+
 .account-dot {
   width: 10px;
   height: 10px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: #0de0c0;
 }
@@ -4562,8 +4805,8 @@ button {
 
 .course-sidebar {
   position: sticky;
-  top: 86px;
-  height: calc(100vh - 86px);
+  top: 140px;
+  height: calc(100vh - 140px);
   display: flex;
   flex-direction: column;
   padding: 28px 22px 22px;
@@ -4666,15 +4909,18 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: auto;
   margin-bottom: 10px;
   padding: 15px 18px;
   border: 1px solid #111;
   border-radius: 999px;
-  background: #14cbea;
   color: #111;
   font-weight: 800;
   cursor: pointer;
+}
+
+.course-map-button {
+  margin-top: auto;
+  background: #14cbea;
 }
 
 .course-map-button strong {
@@ -4700,7 +4946,7 @@ button {
 
 .course-content {
   position: relative;
-  height: calc(100vh - 86px);
+  height: calc(100vh - 140px);
   min-width: 0;
   overflow: hidden;
 }
@@ -4711,6 +4957,7 @@ button {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-padding-bottom: 72px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -4771,7 +5018,8 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 48px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 70px clamp(38px, 6vw, 90px) 58px;
   border-bottom: 1px solid #111;
 }
@@ -7413,19 +7661,343 @@ button {
 
 .review-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 24px;
   margin-top: 48px;
 }
 
-.review-form {
+.review-generation-panel {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+  border: 1px solid #111;
+  background: #fff8e8;
+  color: #111;
+  box-shadow: 10px 10px 0 #ffb21c;
+}
+
+.review-generation-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.review-generation-heading > p {
+  max-width: 520px;
+  margin: 0;
+  color: #4d4d4d;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.review-generation-heading span,
+.review-generation-heading strong {
+  display: block;
+}
+
+.review-generation-heading span {
+  color: #ffb21c;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.review-generation-heading strong {
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.review-output-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.review-output-card {
+  min-height: 138px;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #111;
+  background: #fff;
+  color: #111;
+  text-align: left;
+  box-shadow: 5px 5px 0 var(--output-accent);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.review-output-card:hover,
+.review-output-card.active {
+  background: var(--output-accent);
+  transform: translateY(-3px);
+}
+
+.review-output-card span,
+.review-output-card strong,
+.review-output-card small {
+  display: block;
+}
+
+.review-output-card span {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.review-output-card strong {
+  justify-self: start;
+  padding: 4px 8px;
+  border: 1px solid #111;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.review-output-card small {
+  color: #333;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.review-generator-surface {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.32fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.review-generator-controls {
   display: grid;
   gap: 14px;
   align-content: start;
+  padding: 18px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.review-generator-controls label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+:deep(.review-generator-controls .el-input),
+:deep(.review-generator-controls .el-input-number),
+:deep(.review-generator-controls .el-select) {
+  width: 100%;
+}
+
+:deep(.review-generator-controls .el-input__wrapper),
+:deep(.review-generator-controls .el-input-number .el-input__wrapper),
+:deep(.review-generator-controls .el-select__wrapper) {
+  min-height: 46px;
+  border: 1px solid #111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.review-generator-controls > button {
+  min-height: 46px;
+  border: 1px solid #111;
+  background: #ffb21c;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.review-generator-controls > button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.review-result-panel,
+.review-result-empty {
+  min-width: 0;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.review-result-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid #111;
+  background: #fff;
+}
+
+.review-result-heading span,
+.review-result-heading strong,
+.review-result-heading small {
+  display: block;
+}
+
+.review-result-heading span {
+  color: #ff3151;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.review-result-heading strong {
+  margin-top: 6px;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.review-result-heading small {
+  margin-top: 6px;
+  color: #777;
+  font-size: 11px;
+}
+
+.review-result-heading button {
+  min-height: 40px;
+  flex: 0 0 auto;
+  padding: 0 14px;
+  border: 1px solid #111;
+  background: #ffb21c;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.review-result-empty {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 24px;
+  border-style: dashed;
+  color: #666;
+  text-align: center;
+}
+
+.review-result-empty strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.review-result-empty p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.markdown-preview {
+  max-height: 620px;
+  overflow: auto;
+  padding: 22px;
+  color: #191919;
+  line-height: 1.78;
+}
+
+.markdown-preview :deep(h1),
+.markdown-preview :deep(h2),
+.markdown-preview :deep(h3),
+.markdown-preview :deep(h4) {
+  margin: 22px 0 12px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.markdown-preview :deep(h1) {
+  margin-top: 0;
+  font-size: 34px;
+}
+
+.markdown-preview :deep(h2) {
+  font-size: 26px;
+  border-bottom: 1px solid #111;
+  padding-bottom: 8px;
+}
+
+.markdown-preview :deep(h3) {
+  font-size: 21px;
+}
+
+.markdown-preview :deep(p) {
+  margin: 0 0 12px;
+}
+
+.markdown-preview :deep(ul) {
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+
+.markdown-preview :deep(li) {
+  margin: 6px 0;
+}
+
+.markdown-preview :deep(.markdown-check) {
+  list-style: none;
+  position: relative;
+  margin-left: -18px;
+  padding-left: 28px;
+}
+
+.markdown-preview :deep(.markdown-check::before) {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.markdown-preview :deep(.markdown-check.checked::before) {
+  background: #0de0c0;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.markdown-preview :deep(table) {
+  width: 100%;
+  margin: 14px 0 18px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown-preview :deep(th),
+.markdown-preview :deep(td) {
+  padding: 10px;
+  border: 1px solid #111;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-preview :deep(th) {
+  background: #fff0c7;
+}
+
+.markdown-preview :deep(code) {
+  padding: 2px 5px;
+  border: 1px solid #ddd;
+  background: #f5f3ef;
+  font-family: Consolas, monospace;
+}
+
+.review-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
   padding: 22px;
   border: 1px solid #111;
   background: #fff;
   box-shadow: 10px 10px 0 #ffb21c;
+}
+
+.review-form-horizontal .review-wide {
+  grid-column: span 2;
+}
+
+.review-form-horizontal .review-form-actions {
+  align-self: end;
 }
 
 .review-form label > span {
@@ -7490,11 +8062,15 @@ button {
 }
 
 .review-profile-list {
-  min-height: 420px;
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
   gap: 14px;
   align-content: start;
+}
+
+.review-profile-row {
+  margin-top: 4px;
 }
 
 .review-profile-card {
@@ -8640,6 +9216,135 @@ button {
   letter-spacing: 0.015em;
 }
 
+.material-reader {
+  min-height: 520px;
+  padding: 0;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.material-reader-frame {
+  width: 100%;
+  min-height: 64vh;
+  display: block;
+  border: 0;
+  background: #f5f5f2;
+}
+
+.material-reader-markdown,
+.material-reader-plain,
+.material-reader-download,
+.material-reader-chunks {
+  padding: 28px;
+}
+
+.material-reader-markdown {
+  color: #171717;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.material-reader-markdown :deep(h1),
+.material-reader-markdown :deep(h2),
+.material-reader-markdown :deep(h3),
+.material-reader-markdown :deep(h4) {
+  margin: 1.25em 0 0.55em;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.material-reader-markdown :deep(h1:first-child),
+.material-reader-markdown :deep(h2:first-child),
+.material-reader-markdown :deep(h3:first-child) {
+  margin-top: 0;
+}
+
+.material-reader-markdown :deep(h1) {
+  font-size: 34px;
+}
+
+.material-reader-markdown :deep(h2) {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #111;
+  font-size: 26px;
+}
+
+.material-reader-markdown :deep(h3) {
+  font-size: 21px;
+}
+
+.material-reader-markdown :deep(p),
+.material-reader-markdown :deep(li) {
+  color: #333;
+}
+
+.material-reader-markdown :deep(ul) {
+  display: grid;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.material-reader-markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 13px;
+}
+
+.material-reader-markdown :deep(th),
+.material-reader-markdown :deep(td) {
+  padding: 10px 12px;
+  border: 1px solid #111;
+  text-align: left;
+  vertical-align: top;
+}
+
+.material-reader-markdown :deep(th) {
+  background: #ffef5a;
+  font-weight: 900;
+}
+
+.material-reader-plain pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #222;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.material-reader-download {
+  min-height: 420px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.material-reader-download strong {
+  font-size: 22px;
+}
+
+.material-reader-download p {
+  max-width: 520px;
+  margin: 0;
+  color: #555;
+  line-height: 1.7;
+}
+
+.material-reader-download button {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .text-dialog-footer {
   align-items: center;
   justify-content: space-between;
@@ -9112,6 +9817,19 @@ button {
     grid-template-columns: auto 1fr;
   }
 
+  .global-search-shell {
+    grid-template-columns: minmax(0, 680px);
+    gap: 6px;
+  }
+
+  .global-search-context {
+    display: none;
+  }
+
+  .global-search-shell > p {
+    max-width: none;
+  }
+
   .topnav {
     display: none;
   }
@@ -9238,11 +9956,43 @@ button {
     padding: 0 18px;
   }
 
+  .global-search-shell {
+    top: 72px;
+    min-height: 0;
+    padding: 8px 18px;
+  }
+
+  .global-search-context span,
+  .global-search-shell > p {
+    display: none;
+  }
+
+  .global-search-context strong {
+    font-size: 13px;
+  }
+
+  .global-search-box {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 4px 4px 4px 8px;
+    box-shadow: none;
+  }
+
+  .global-search-submit,
+  .global-search-detail {
+    min-height: 32px;
+    padding: 0 10px;
+  }
+
+  .global-search-detail {
+    display: none;
+  }
+
   .workspace-wordmark {
     font-size: 30px;
   }
 
-  .account-area > span:not(.account-dot) {
+  .account-user span:not(.account-dot) {
     display: none;
   }
 
@@ -9251,7 +10001,7 @@ button {
   }
 
   .course-content {
-    height: calc(100vh - 72px);
+    height: calc(100vh - 126px);
     overflow: hidden;
   }
 
@@ -9298,14 +10048,11 @@ button {
   }
 
   .course-hero,
-  .relation-section,
   .chapter-section,
   .material-section,
   .gap-section,
   .teacher-section,
   .review-section,
-  .ai-config-section,
-  .ai-task-section,
   .export-section {
     padding-left: 22px;
     padding-right: 22px;
@@ -9349,15 +10096,12 @@ button {
   }
 
   .section-intro,
-  .relation-heading,
   .material-title-row,
   .search-heading,
   .knowledge-heading,
   .gap-heading,
   .teacher-heading,
   .review-heading,
-  .ai-config-heading,
-  .ai-task-heading,
   .export-heading {
     display: block;
   }
@@ -9404,24 +10148,10 @@ button {
     margin-top: 24px;
   }
 
-  .ai-config-heading > p {
-    margin-top: 24px;
-  }
-
-  .ai-task-heading > p {
-    margin-top: 24px;
-  }
-
-  .relation-heading > p {
-    margin-top: 24px;
-  }
-
   .export-heading > p {
     margin-top: 24px;
   }
 
-  .relation-form,
-  .relation-groups,
   .search-input-row,
   .search-filters,
   .search-history-list,
@@ -9438,12 +10168,10 @@ button {
   .teacher-profile-grid,
   .mock-exam-controls,
   .review-layout,
+  .review-form,
+  .review-output-grid,
+  .review-generator-surface,
   .review-profile-list,
-  .ai-config-status,
-  .ai-config-layout,
-  .ai-provider-list,
-  .ai-task-status,
-  .ai-task-list,
   .export-form-grid,
   .export-preview-stats,
   .export-preview-grid,
@@ -9470,12 +10198,20 @@ button {
   .knowledge-mastery-actions,
   .teacher-edit-actions,
   .review-form-actions,
-  .ai-provider-actions,
   .export-preview-heading,
   .export-record-heading,
   .export-record-card {
     display: grid;
     justify-items: stretch;
+  }
+
+  .review-form-horizontal .review-wide {
+    grid-column: auto;
+  }
+
+  .review-generation-heading,
+  .review-result-heading {
+    display: grid;
   }
 
   .knowledge-generator > p {

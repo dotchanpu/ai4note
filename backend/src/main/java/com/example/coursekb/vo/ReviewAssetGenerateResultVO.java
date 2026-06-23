@@ -1,32 +1,32 @@
 package com.example.coursekb.vo;
 
-public class MockExamGenerateResultVO {
+public class ReviewAssetGenerateResultVO {
     private AiGenerationTaskVO task;
     private String title;
+    private String outputType;
     private String resultPath;
     private String content;
-    private int questionCount;
     private MaterialVO material;
 
-    public MockExamGenerateResultVO(
+    public ReviewAssetGenerateResultVO(
             AiGenerationTaskVO task,
             String title,
+            String outputType,
             String resultPath,
             String content,
-            int questionCount,
             MaterialVO material) {
         this.task = task;
         this.title = title;
+        this.outputType = outputType;
         this.resultPath = resultPath;
         this.content = content;
-        this.questionCount = questionCount;
         this.material = material;
     }
 
     public AiGenerationTaskVO getTask() { return task; }
     public String getTitle() { return title; }
+    public String getOutputType() { return outputType; }
     public String getResultPath() { return resultPath; }
     public String getContent() { return content; }
-    public int getQuestionCount() { return questionCount; }
     public MaterialVO getMaterial() { return material; }
 }

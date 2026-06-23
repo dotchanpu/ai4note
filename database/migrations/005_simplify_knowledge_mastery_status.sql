@@ -12,6 +12,10 @@ UPDATE knowledge_gap_item
 SET gap_type = 'PREREQUISITE_GAP'
 WHERE gap_type = 'PREREQUISITE_MISSING';
 
+UPDATE knowledge_gap_item
+SET gap_type = 'UNASSESSED'
+WHERE gap_type = 'UNREVIEWED';
+
 ALTER TABLE user_knowledge_status
   DROP CHECK ck_mastery_status;
 

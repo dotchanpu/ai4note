@@ -246,7 +246,7 @@ public class KnowledgeGapService {
         KnowledgeRemediationPathVO.Stage prerequisiteStage = new KnowledgeRemediationPathVO.Stage(
                 "PREREQUISITE_REPAIR", "先补前置基础", "优先补齐来自前置课程的薄弱知识，降低后续复习阻力");
         KnowledgeRemediationPathVO.Stage priorityStage = new KnowledgeRemediationPathVO.Stage(
-                "HIGH_PRIORITY", "攻克高优先级缺口", "处理严重程度较高或掌握分数较低的核心知识点");
+                "HIGH_PRIORITY", "攻克高优先级缺口", "处理严重程度较高的核心知识点");
         KnowledgeRemediationPathVO.Stage examStage = new KnowledgeRemediationPathVO.Stage(
                 "EXAM_PRACTICE", "专项真题训练", "围绕真题命中较多的知识点做题和复盘");
         KnowledgeRemediationPathVO.Stage consolidationStage = new KnowledgeRemediationPathVO.Stage(
@@ -343,25 +343,24 @@ public class KnowledgeGapService {
             UserKnowledgeStatus mastery,
             ExamKnowledgeStatVO stat) {
         String masteryStatus = simplifyMasteryStatus(mastery == null ? null : mastery.getMasteryStatus());
-        BigDecimal masteryScore = mastery == null ? null : mastery.getMasteryScore();
         long questionCount = stat == null ? 0 : stat.getQuestionCount();
         boolean sourceIsPrerequisite = source != null && source.relation != null;
-        if (!shouldCreateGap(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite)) {
+        if (!shouldCreateGap(masteryStatus, questionCount, sourceIsPrerequisite)) {
             return null;
         }
         KnowledgeGapItem gap = new KnowledgeGapItem();
         gap.setKnowledgeItemId(knowledgeItem.getId());
         gap.setSourceCourseId(knowledgeItem.getCourseId());
         gap.setRelatedCourseRelationId(source == null || source.relation == null ? null : source.relation.getId());
-        gap.setGapType(resolveGapType(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite));
-        gap.setSeverityLevel(resolveSeverity(masteryStatus, masteryScore, questionCount, sourceIsPrerequisite));
-        gap.setReason(renderReason(masteryStatus, masteryScore, questionCount, stat, sourceIsPrerequisite));
+        gap.setGapType(resolveGapType(masteryStatus, questionCount, sourceIsPrerequisite));
+        gap.setSeverityLevel(resolveSeverity(masteryStatus, questionCount, sourceIsPrerequisite));
+        gap.setReason(renderReason(masteryStatus, questionCount, stat, sourceIsPrerequisite));
         gap.setSuggestion(renderSuggestion(gap.getGapType(), sourceIsPrerequisite));
         return gap;
     }
 
     private boolean shouldCreateGap(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
         if ("MASTERED".equals(masteryStatus)) {
             return false;
         }
@@ -372,7 +371,7 @@ public class KnowledgeGapService {
     }
 
     private String resolveGapType(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
         if (questionCount >= 2) {
             return "HIGH_FREQUENCY";
         }
@@ -386,7 +385,7 @@ public class KnowledgeGapService {
     }
 
     private int resolveSeverity(
-            String masteryStatus, BigDecimal masteryScore, long questionCount, boolean sourceIsPrerequisite) {
+            String masteryStatus, long questionCount, boolean sourceIsPrerequisite) {
         int severity = 1;
         if ("LEARNING".equals(masteryStatus)) {
             severity += 2;
@@ -406,15 +405,11 @@ public class KnowledgeGapService {
 
     private String renderReason(
             String masteryStatus,
-            BigDecimal masteryScore,
             long questionCount,
             ExamKnowledgeStatVO stat,
             boolean sourceIsPrerequisite) {
         List<String> reasons = new ArrayList<>();
         reasons.add("掌握状态为 " + masteryStatus);
-        if (masteryScore != null) {
-            reasons.add("掌握分数 " + masteryScore);
-        }
         if (questionCount > 0) {
             reasons.add("真题命中 " + questionCount + " 次"
                     + (stat == null || stat.getLatestExamYear() == null
