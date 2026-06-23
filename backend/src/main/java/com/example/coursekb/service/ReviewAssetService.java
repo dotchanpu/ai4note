@@ -3,10 +3,12 @@ package com.example.coursekb.service;
 import com.example.coursekb.dto.ReviewAssetGenerateRequest;
 import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.Course;
+import com.example.coursekb.entity.CourseRelation;
 import com.example.coursekb.entity.KnowledgeItem;
 import com.example.coursekb.entity.TeacherProfile;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.mapper.AiGenerationTaskRepository;
+import com.example.coursekb.mapper.CourseRelationRepository;
 import com.example.coursekb.mapper.KnowledgeItemRepository;
 import com.example.coursekb.mapper.TeacherProfileRepository;
 import com.example.coursekb.vo.AiGenerationTaskVO;
@@ -22,8 +24,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,12 +41,14 @@ public class ReviewAssetService {
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final Set<String> OUTPUT_TYPES = new HashSet<>(Arrays.asList(
             "REVIEW_NOTE", "OUTLINE", "FLASHCARDS", "CHECKLIST"));
-    private static final int MAX_KNOWLEDGE_ITEMS = 90;
+    private static final int MAX_CURRENT_KNOWLEDGE_ITEMS = 150;
+    private static final int MAX_PREREQUISITE_KNOWLEDGE_ITEMS = 50;
     private static final int MAX_STATS = 40;
     private static final int MAX_KNOWLEDGE_CONTENT_LENGTH = 520;
 
     private final CourseService courseService;
     private final TeacherProfileRepository teacherProfileRepository;
+    private final CourseRelationRepository courseRelationRepository;
     private final KnowledgeItemRepository knowledgeItemRepository;
     private final ExamQuestionService examQuestionService;
     private final DeepSeekService deepSeekService;
@@ -56,6 +61,7 @@ public class ReviewAssetService {
     public ReviewAssetService(
             CourseService courseService,
             TeacherProfileRepository teacherProfileRepository,
+            CourseRelationRepository courseRelationRepository,
             KnowledgeItemRepository knowledgeItemRepository,
             ExamQuestionService examQuestionService,
             DeepSeekService deepSeekService,
@@ -66,6 +72,7 @@ public class ReviewAssetService {
             @Value("${ai4note.storage-root}") String storageRoot) {
         this.courseService = courseService;
         this.teacherProfileRepository = teacherProfileRepository;
+        this.courseRelationRepository = courseRelationRepository;
         this.knowledgeItemRepository = knowledgeItemRepository;
         this.examQuestionService = examQuestionService;
         this.deepSeekService = deepSeekService;
@@ -83,16 +90,20 @@ public class ReviewAssetService {
         List<KnowledgeItem> knowledgeItems = knowledgeItemRepository
                 .findByCourseIdOrderByImportanceLevelDescIdDesc(courseId)
                 .stream()
-                .limit(MAX_KNOWLEDGE_ITEMS)
+                .limit(MAX_CURRENT_KNOWLEDGE_ITEMS)
                 .collect(Collectors.toList());
         if (knowledgeItems.isEmpty()) {
             throw new BusinessException("请先生成课程知识点，再生成复习资料");
         }
+        List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups = loadPrerequisiteKnowledge(
+                course,
+                request.getUserId(),
+                shouldIncludePrerequisites(request));
         List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(
                 courseId, request.getUserId(), null, null, null);
 
         String systemPrompt = buildSystemPrompt(outputType);
-        String userPrompt = buildUserPrompt(course, profile, knowledgeItems, stats, request);
+        String userPrompt = buildUserPrompt(course, profile, knowledgeItems, prerequisiteKnowledgeGroups, stats, request);
         String prompt = systemPrompt + "\n\n" + userPrompt;
         AiGenerationTask task = aiGenerationTaskService.createTask(
                 request.getUserId(),
@@ -190,6 +201,41 @@ public class ReviewAssetService {
         return profile;
     }
 
+    private List<PrerequisiteKnowledgeGroup> loadPrerequisiteKnowledge(
+            Course course,
+            Long userId,
+            boolean includePrerequisites) {
+        if (!includePrerequisites) {
+            return Collections.emptyList();
+        }
+        List<CourseRelation> relations = courseRelationRepository.findByCourseIdOrderBySortOrderAscIdAsc(course.getId())
+                .stream()
+                .filter(relation -> "PREREQUISITE".equals(relation.getRelationType()))
+                .collect(Collectors.toList());
+        if (relations.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int perCourseLimit = Math.max(8, MAX_PREREQUISITE_KNOWLEDGE_ITEMS / relations.size());
+        int remaining = MAX_PREREQUISITE_KNOWLEDGE_ITEMS;
+        List<PrerequisiteKnowledgeGroup> groups = new ArrayList<>();
+        for (CourseRelation relation : relations) {
+            if (remaining <= 0) {
+                break;
+            }
+            Course prerequisite = courseService.getOwnedCourse(relation.getRelatedCourseId(), userId);
+            List<KnowledgeItem> items = knowledgeItemRepository
+                    .findByCourseIdOrderByImportanceLevelDescIdDesc(prerequisite.getId())
+                    .stream()
+                    .limit(Math.min(perCourseLimit, remaining))
+                    .collect(Collectors.toList());
+            if (!items.isEmpty()) {
+                groups.add(new PrerequisiteKnowledgeGroup(relation, prerequisite, items));
+                remaining -= items.size();
+            }
+        }
+        return groups;
+    }
+
     private String buildSystemPrompt(String outputType) {
         return "You are AI4Note's Chinese review asset generation assistant. "
                 + "Return only a valid JSON object with fields {\"title\":\"...\",\"markdown\":\"...\"}. "
@@ -202,6 +248,7 @@ public class ReviewAssetService {
             Course course,
             TeacherProfile profile,
             List<KnowledgeItem> knowledgeItems,
+            List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups,
             List<ExamKnowledgeStatVO> stats,
             ReviewAssetGenerateRequest request) {
         StringBuilder builder = new StringBuilder();
@@ -215,7 +262,11 @@ public class ReviewAssetService {
         builder.append("- type: ").append(normalizeOutputType(request.getOutputType())).append('\n');
         builder.append("- typeLabel: ").append(outputTypeLabel(normalizeOutputType(request.getOutputType()))).append('\n');
         builder.append("- difficultyLevel: ").append(normalizeDifficulty(request.getDifficultyLevel())).append('\n');
-        builder.append("- includePrerequisites: ").append(!Boolean.FALSE.equals(request.getIncludePrerequisites())).append('\n');
+        builder.append("- includePrerequisites: ").append(shouldIncludePrerequisites(request)).append('\n');
+        builder.append("- currentCourseKnowledgeCount: ").append(knowledgeItems.size()).append('\n');
+        builder.append("- prerequisiteKnowledgeCount: ").append(prerequisiteKnowledgeGroups.stream()
+                .mapToInt(group -> group.items.size())
+                .sum()).append('\n');
 
         builder.append("\nTeacher profile:\n");
         if (profile == null) {
@@ -245,13 +296,35 @@ public class ReviewAssetService {
             }
         }
 
-        builder.append("\nKnowledge items:\n");
+        builder.append("\nKnowledge scope rule:\n");
+        builder.append("- Current course knowledge is the main body of the review asset.\n");
+        if (prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("- No prerequisite knowledge items are supplied. Do not invent prerequisite content.\n");
+        } else {
+            builder.append("- Target content balance: current course 75%-85%, prerequisite foundations 15%-25%.\n");
+            builder.append("- Use prerequisite items only to explain foundations, repair weak links, or add prerequisite recap sections.\n");
+            builder.append("- Mark prerequisite content clearly with labels such as 前置基础 or 补基础.\n");
+        }
+
+        builder.append("\nCurrent course knowledge items:\n");
         for (KnowledgeItem item : knowledgeItems) {
-            builder.append("- ").append(item.getTitle())
-                    .append("; type: ").append(item.getItemType())
-                    .append("; importance: ").append(item.getImportanceLevel())
-                    .append("; content: ").append(abbreviate(item.getContent(), MAX_KNOWLEDGE_CONTENT_LENGTH))
-                    .append('\n');
+            appendKnowledgeItem(builder, item);
+        }
+
+        if (!prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("\nPrerequisite course knowledge items:\n");
+            for (PrerequisiteKnowledgeGroup group : prerequisiteKnowledgeGroups) {
+                builder.append("- course: ").append(group.course.getCourseName());
+                if (group.course.getCourseCode() != null && !group.course.getCourseCode().trim().isEmpty()) {
+                    builder.append(" (").append(group.course.getCourseCode().trim()).append(")");
+                }
+                appendInlineOptional(builder, "; relationReason: ", group.relation.getReason());
+                builder.append('\n');
+                for (KnowledgeItem item : group.items) {
+                    builder.append("  ");
+                    appendKnowledgeItem(builder, item);
+                }
+            }
         }
 
         builder.append("\nWriting requirements:\n");
@@ -394,6 +467,24 @@ public class ReviewAssetService {
         }
     }
 
+    private void appendInlineOptional(StringBuilder builder, String label, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            builder.append(label).append(value.trim());
+        }
+    }
+
+    private void appendKnowledgeItem(StringBuilder builder, KnowledgeItem item) {
+        builder.append("- ").append(item.getTitle())
+                .append("; type: ").append(item.getItemType())
+                .append("; importance: ").append(item.getImportanceLevel())
+                .append("; content: ").append(abbreviate(item.getContent(), MAX_KNOWLEDGE_CONTENT_LENGTH))
+                .append('\n');
+    }
+
+    private boolean shouldIncludePrerequisites(ReviewAssetGenerateRequest request) {
+        return !Boolean.FALSE.equals(request.getIncludePrerequisites());
+    }
+
     private String textOrDefault(JsonNode node, String defaultValue) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return defaultValue;
@@ -412,5 +503,17 @@ public class ReviewAssetService {
 
     private String nullToDash(String value) {
         return value == null || value.trim().isEmpty() ? "-" : value.trim();
+    }
+
+    private static class PrerequisiteKnowledgeGroup {
+        private final CourseRelation relation;
+        private final Course course;
+        private final List<KnowledgeItem> items;
+
+        private PrerequisiteKnowledgeGroup(CourseRelation relation, Course course, List<KnowledgeItem> items) {
+            this.relation = relation;
+            this.course = course;
+            this.items = items;
+        }
     }
 }

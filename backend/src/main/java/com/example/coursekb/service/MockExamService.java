@@ -3,10 +3,12 @@ package com.example.coursekb.service;
 import com.example.coursekb.dto.MockExamGenerateRequest;
 import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.Course;
+import com.example.coursekb.entity.CourseRelation;
 import com.example.coursekb.entity.KnowledgeItem;
 import com.example.coursekb.entity.TeacherProfile;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.mapper.AiGenerationTaskRepository;
+import com.example.coursekb.mapper.CourseRelationRepository;
 import com.example.coursekb.mapper.KnowledgeItemRepository;
 import com.example.coursekb.mapper.TeacherProfileRepository;
 import com.example.coursekb.vo.AiGenerationTaskVO;
@@ -25,6 +27,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -42,12 +45,14 @@ public class MockExamService {
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final Set<String> DIFFICULTIES = new HashSet<>(Arrays.asList(
             "EASY", "MEDIUM", "MEDIUM_HARD", "HARD"));
-    private static final int MAX_KNOWLEDGE_ITEMS = 70;
+    private static final int MAX_KNOWLEDGE_ITEMS = 120;
+    private static final int MAX_PREREQUISITE_KNOWLEDGE_ITEMS = 30;
     private static final int MAX_STATS = 40;
     private static final int MAX_KNOWLEDGE_CONTENT_LENGTH = 500;
 
     private final CourseService courseService;
     private final TeacherProfileRepository teacherProfileRepository;
+    private final CourseRelationRepository courseRelationRepository;
     private final KnowledgeItemRepository knowledgeItemRepository;
     private final ExamQuestionService examQuestionService;
     private final DeepSeekService deepSeekService;
@@ -60,6 +65,7 @@ public class MockExamService {
     public MockExamService(
             CourseService courseService,
             TeacherProfileRepository teacherProfileRepository,
+            CourseRelationRepository courseRelationRepository,
             KnowledgeItemRepository knowledgeItemRepository,
             ExamQuestionService examQuestionService,
             DeepSeekService deepSeekService,
@@ -70,6 +76,7 @@ public class MockExamService {
             @Value("${ai4note.storage-root}") String storageRoot) {
         this.courseService = courseService;
         this.teacherProfileRepository = teacherProfileRepository;
+        this.courseRelationRepository = courseRelationRepository;
         this.knowledgeItemRepository = knowledgeItemRepository;
         this.examQuestionService = examQuestionService;
         this.deepSeekService = deepSeekService;
@@ -93,9 +100,21 @@ public class MockExamService {
         }
         List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(courseId, request.getUserId(), null, null, null);
         List<KnowledgeItem> promptItems = selectPromptKnowledgeItems(knowledgeItems, stats);
+        List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups = loadPrerequisiteKnowledge(
+                course,
+                request.getUserId(),
+                shouldIncludePrerequisites(request));
 
         String systemPrompt = buildSystemPrompt();
-        String userPrompt = buildUserPrompt(course, profile, promptItems, stats, questionCount, difficulty, request.getCustomRequirement());
+        String userPrompt = buildUserPrompt(
+                course,
+                profile,
+                promptItems,
+                prerequisiteKnowledgeGroups,
+                stats,
+                questionCount,
+                difficulty,
+                request.getCustomRequirement());
         String prompt = systemPrompt + "\n\n" + userPrompt;
         AiGenerationTask task = aiGenerationTaskService.createTask(
                 request.getUserId(),
@@ -225,6 +244,41 @@ public class MockExamService {
         return new ArrayList<>(selected.values());
     }
 
+    private List<PrerequisiteKnowledgeGroup> loadPrerequisiteKnowledge(
+            Course course,
+            Long userId,
+            boolean includePrerequisites) {
+        if (!includePrerequisites) {
+            return Collections.emptyList();
+        }
+        List<CourseRelation> relations = courseRelationRepository.findByCourseIdOrderBySortOrderAscIdAsc(course.getId())
+                .stream()
+                .filter(relation -> "PREREQUISITE".equals(relation.getRelationType()))
+                .collect(Collectors.toList());
+        if (relations.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int perCourseLimit = Math.max(5, MAX_PREREQUISITE_KNOWLEDGE_ITEMS / relations.size());
+        int remaining = MAX_PREREQUISITE_KNOWLEDGE_ITEMS;
+        List<PrerequisiteKnowledgeGroup> groups = new ArrayList<>();
+        for (CourseRelation relation : relations) {
+            if (remaining <= 0) {
+                break;
+            }
+            Course prerequisite = courseService.getOwnedCourse(relation.getRelatedCourseId(), userId);
+            List<KnowledgeItem> items = knowledgeItemRepository
+                    .findByCourseIdOrderByImportanceLevelDescIdDesc(prerequisite.getId())
+                    .stream()
+                    .limit(Math.min(perCourseLimit, remaining))
+                    .collect(Collectors.toList());
+            if (!items.isEmpty()) {
+                groups.add(new PrerequisiteKnowledgeGroup(relation, prerequisite, items));
+                remaining -= items.size();
+            }
+        }
+        return groups;
+    }
+
     private String buildSystemPrompt() {
         return "You are AI4Note's mock exam generation assistant. "
                 + "Generate a Chinese mock exam strictly from the provided teacher profile, knowledge items, and exam frequency stats. "
@@ -240,6 +294,7 @@ public class MockExamService {
             Course course,
             TeacherProfile profile,
             List<KnowledgeItem> knowledgeItems,
+            List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups,
             List<ExamKnowledgeStatVO> stats,
             int questionCount,
             String difficulty,
@@ -281,17 +336,36 @@ public class MockExamService {
 
         builder.append("\nCandidate knowledge items:\n");
         for (KnowledgeItem item : knowledgeItems) {
-            builder.append("- id: ").append(item.getId())
-                    .append("; title: ").append(item.getTitle())
-                    .append("; type: ").append(item.getItemType())
-                    .append("; importance: ").append(item.getImportanceLevel())
-                    .append("; content: ").append(abbreviate(item.getContent(), MAX_KNOWLEDGE_CONTENT_LENGTH))
-                    .append('\n');
+            appendKnowledgeItem(builder, item);
+        }
+
+        builder.append("\nPrerequisite knowledge items:\n");
+        if (prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("- No prerequisite knowledge items are supplied. Do not invent prerequisite content.\n");
+        } else {
+            for (PrerequisiteKnowledgeGroup group : prerequisiteKnowledgeGroups) {
+                builder.append("- course: ").append(group.course.getCourseName());
+                if (group.course.getCourseCode() != null && !group.course.getCourseCode().trim().isEmpty()) {
+                    builder.append(" (").append(group.course.getCourseCode().trim()).append(")");
+                }
+                appendInlineOptional(builder, "; relationReason: ", group.relation.getReason());
+                builder.append('\n');
+                for (KnowledgeItem item : group.items) {
+                    builder.append("  ");
+                    appendKnowledgeItem(builder, item);
+                }
+            }
         }
 
         builder.append("\nGeneration requirements:\n");
         builder.append("- questionCount: ").append(questionCount).append('\n');
         builder.append("- difficultyLevel: ").append(difficulty).append('\n');
+        if (prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("- Generate questions from current course knowledge only.\n");
+        } else {
+            builder.append("- Target question focus: current course 80%-90%, prerequisite foundations 10%-20%.\n");
+            builder.append("- Prerequisite items should appear only as foundation checks or context needed to solve current-course questions.\n");
+        }
         builder.append("- Include a balanced set of objective and subjective questions when the teacher profile supports it.\n");
         builder.append("- Prioritize high-frequency historical exam knowledge, then high-importance knowledge items.\n");
         builder.append("- For each question, provide answerOutline and gradingRubric.\n");
@@ -452,6 +526,25 @@ public class MockExamService {
         }
     }
 
+    private void appendInlineOptional(StringBuilder builder, String label, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            builder.append(label).append(value.trim());
+        }
+    }
+
+    private void appendKnowledgeItem(StringBuilder builder, KnowledgeItem item) {
+        builder.append("- id: ").append(item.getId())
+                .append("; title: ").append(item.getTitle())
+                .append("; type: ").append(item.getItemType())
+                .append("; importance: ").append(item.getImportanceLevel())
+                .append("; content: ").append(abbreviate(item.getContent(), MAX_KNOWLEDGE_CONTENT_LENGTH))
+                .append('\n');
+    }
+
+    private boolean shouldIncludePrerequisites(MockExamGenerateRequest request) {
+        return !Boolean.FALSE.equals(request.getIncludePrerequisites());
+    }
+
     private void appendMarkdownLine(StringBuilder builder, String label, String value) {
         if (value != null && !value.trim().isEmpty()) {
             builder.append("- ").append(label).append("：").append(value.trim()).append('\n');
@@ -495,5 +588,17 @@ public class MockExamService {
 
     private String nullToDash(String value) {
         return value == null || value.trim().isEmpty() ? "-" : value.trim();
+    }
+
+    private static class PrerequisiteKnowledgeGroup {
+        private final CourseRelation relation;
+        private final Course course;
+        private final List<KnowledgeItem> items;
+
+        private PrerequisiteKnowledgeGroup(CourseRelation relation, Course course, List<KnowledgeItem> items) {
+            this.relation = relation;
+            this.course = course;
+            this.items = items;
+        }
     }
 }

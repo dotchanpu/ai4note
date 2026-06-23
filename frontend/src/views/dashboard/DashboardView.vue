@@ -2852,6 +2852,7 @@ async function generateMockExamFromProfile() {
       teacherProfileId,
       questionCount: mockExamForm.questionCount,
       difficultyLevel: mockExamForm.difficultyLevel,
+      includePrerequisites: reviewProfileForm.includePrerequisites,
       model: 'deepseek-v4-flash',
       customRequirement: mockExamForm.customRequirement.trim()
         || reviewProfileForm.customRequirement.trim()

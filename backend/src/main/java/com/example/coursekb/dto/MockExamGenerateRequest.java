@@ -19,6 +19,8 @@ public class MockExamGenerateRequest {
     @Size(max = 32, message = "难度不能超过 32 个字符")
     private String difficultyLevel = "MEDIUM";
 
+    private Boolean includePrerequisites = true;
+
     @Size(max = 128, message = "模型名称不能超过 128 个字符")
     private String model;
 
@@ -33,6 +35,8 @@ public class MockExamGenerateRequest {
     public void setQuestionCount(Integer questionCount) { this.questionCount = questionCount; }
     public String getDifficultyLevel() { return difficultyLevel; }
     public void setDifficultyLevel(String difficultyLevel) { this.difficultyLevel = difficultyLevel; }
+    public Boolean getIncludePrerequisites() { return includePrerequisites; }
+    public void setIncludePrerequisites(Boolean includePrerequisites) { this.includePrerequisites = includePrerequisites; }
     public String getModel() { return model; }
     public void setModel(String model) { this.model = model; }
     public String getCustomRequirement() { return customRequirement; }
