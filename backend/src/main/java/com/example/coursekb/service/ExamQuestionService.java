@@ -36,6 +36,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
@@ -50,7 +55,7 @@ public class ExamQuestionService {
     private static final Logger log = LoggerFactory.getLogger(ExamQuestionService.class);
     private static final Set<String> MATCH_SOURCES =
             new LinkedHashSet<String>(java.util.Arrays.asList("AI", "MANUAL"));
-    private static final int MAX_EXTRACTION_BATCH_CHARS = 2200;
+    private static final int MAX_EXTRACTION_BATCH_CHARS = 100000;
     private static final int MAX_AUTO_MAP_BATCH_QUESTIONS = 12;
     private static final int MAX_AUTO_MAP_KNOWLEDGE_ITEMS = 80;
     private static final BigDecimal MIN_AUTO_MAP_CONFIDENCE = new BigDecimal("60");
@@ -62,6 +67,7 @@ public class ExamQuestionService {
     private static final String CODE_PDF_ONLY = "EXAM_PDF_ONLY";
     private static final Pattern QUESTION_NO_PATTERN =
             Pattern.compile("^[A-Z]?\\d+(?:[.-]\\d+)*(?:[A-Z])?$");
+    private static final ExecutorService BATCH_ANSWER_EXECUTOR = Executors.newFixedThreadPool(10);
     private static final Pattern LEADING_QUESTION_LABEL_PATTERN =
             Pattern.compile("^(?:QUESTION|Q|NO|NO\\.|题号|题目|第)+[:：.、\\-]*", Pattern.CASE_INSENSITIVE);
     private static final Pattern TRAILING_QUESTION_LABEL_PATTERN =
@@ -402,27 +408,37 @@ public class ExamQuestionService {
         return toQuestionVOs(Collections.singletonList(question)).get(0);
     }
 
-    @Transactional
     public Map<String, Object> generateBatchAnswers(Long courseId, Long userId) {
         courseService.getOwnedCourse(courseId, userId);
         List<ExamQuestion> unanswered = examQuestionRepository
                 .findByCourseIdAndAnswerTextIsNullOrderByIdAsc(courseId);
-        int success = 0;
-        int failed = 0;
-        for (ExamQuestion question : unanswered) {
-            try {
-                generateAnswer(question.getId(), userId);
-                success++;
-            } catch (Exception exception) {
-                log.warn("Failed to generate answer for questionId={}, error={}",
-                        question.getId(), exception.getMessage());
-                failed++;
-            }
+        if (unanswered.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("total", 0);
+            empty.put("success", 0);
+            empty.put("failed", 0);
+            return empty;
         }
+        AtomicInteger success = new AtomicInteger(0);
+        AtomicInteger failed = new AtomicInteger(0);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (ExamQuestion question : unanswered) {
+            futures.add(CompletableFuture.runAsync(() -> {
+                try {
+                    generateAnswer(question.getId(), userId);
+                    success.incrementAndGet();
+                } catch (Exception exception) {
+                    log.warn("Failed to generate answer for questionId={}, error={}",
+                            question.getId(), exception.getMessage());
+                    failed.incrementAndGet();
+                }
+            }, BATCH_ANSWER_EXECUTOR));
+        }
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("total", unanswered.size());
-        resultMap.put("success", success);
-        resultMap.put("failed", failed);
+        resultMap.put("success", success.get());
+        resultMap.put("failed", failed.get());
         return resultMap;
     }
 
@@ -808,7 +824,7 @@ public class ExamQuestionService {
                 buildSystemPrompt(),
                 buildUserPrompt(material, batch),
                 null,
-                8192);
+                262144);
         try {
             return parseExtractionPayloads(json);
         } catch (JsonProcessingException exception) {

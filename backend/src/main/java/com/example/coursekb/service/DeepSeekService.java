@@ -242,8 +242,8 @@ public class DeepSeekService {
 
     private int normalizeMaxTokens(Integer requestedMaxTokens) {
         int value = requestedMaxTokens == null ? 2048 : requestedMaxTokens;
-        if (value < 1 || value > 8192) {
-            throw new BusinessException("maxTokens 必须在 1 到 8192 之间");
+        if (value < 1 || value > 262144) {
+            throw new BusinessException("maxTokens 必须在 1 到 262144 之间");
         }
         return value;
     }
