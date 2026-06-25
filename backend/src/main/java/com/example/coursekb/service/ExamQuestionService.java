@@ -808,7 +808,7 @@ public class ExamQuestionService {
                 buildSystemPrompt(),
                 buildUserPrompt(material, batch),
                 null,
-                3072);
+                8192);
         try {
             return parseExtractionPayloads(json);
         } catch (JsonProcessingException exception) {
