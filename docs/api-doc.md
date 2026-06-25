@@ -901,9 +901,9 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 - `page`：可选，默认 `1`
 - `size`：可选，默认 `12`
 - `year`：可选
-- `chapterId`：可选
+- `chapterIds`：可选，多值
 - `questionType`：可选
-- `materialId`：可选
+- `materialIds`：可选，多值
 
 接口返回分页对象，而不是裸数组：
 
@@ -915,6 +915,9 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
       "materialId": 12,
       "questionType": "简答题",
       "questionText": "说明事务的 ACID 特性",
+      "answerText": "原子性、一致性、隔离性、持久性",
+      "answerSource": "数据库系统原理课件",
+      "answerSourcePage": 18,
       "sourcePage": 3,
       "mappings": []
     }
@@ -927,6 +930,8 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 ```
 
 列表按卷面顺序优先返回，当前排序口径为：`examYear DESC -> materialId DESC -> sourcePage ASC -> normalizedQuestionNo ASC -> id ASC`。
+
+当前返回对象还会携带 `answerSource` 和 `answerSourcePage`，用于说明答案来自哪份课件或笔记及其参考页码。
 
 ### 11.3 建立题目与知识点映射
 
@@ -953,7 +958,7 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-knowledge-stats`
 
-该接口会基于当前真题映射结果做实时聚合统计，可按年份、章节和题型筛选知识点命中次数、累计分值和最近出现年份。
+查询参数：`userId`，可选 `year`、`chapterIds`、`questionType`、`materialIds`。该接口会基于当前真题映射结果做实时聚合统计，可按年份、章节、题型和资料范围筛选知识点命中次数、累计分值和最近出现年份。默认口径是课程级聚合；传入 `materialIds` 时会收缩到所选资料范围。
 
 ### 11.5 查询高频考点趋势
 
@@ -961,7 +966,29 @@ GET /api/search?userId=7&courseId=4&keyword=编译&materialType=SLIDE&isKey=fals
 - 方法：`GET`
 - 路径：`/api/courses/{courseId}/exam-knowledge-trends`
 
-查询参数：`userId`，可选 `chapterId`、`questionType`。该接口基于带年份的真题和知识点映射，按知识点聚合历年命中次数与分值，返回每个高频考点的总命中次数、总分和年度趋势明细，用于观察考点热度变化。
+查询参数：`userId`，可选 `chapterIds`、`questionType`、`materialIds`。该接口基于带年份的真题和知识点映射，按知识点聚合历年命中次数与分值，返回每个高频考点的总命中次数、总分和年度趋势明细，用于观察考点热度变化。
+
+### 11.6 为单题生成参考答案
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/exam-questions/{questionId}/generate-answer`
+
+查询参数：`userId`。后端会读取当前课程下的 `SLIDE`、`NOTE` 类型资料及其解析文本，结合题干检索相关上下文，调用 DeepSeek 生成参考答案，并把答案正文、答案来源说明和参考页码写回该题目。
+
+当前行为说明：
+
+- 如果课程下没有可用的 `SLIDE` 或 `NOTE` 资料，会返回业务错误
+- 生成结果会覆盖该题目原有 `answerText`
+- 返回结构与真题列表中的单题对象一致，并额外包含 `answerSource`、`answerSourcePage`
+
+### 11.7 批量补全课程真题答案
+
+- 状态：已实现
+- 方法：`POST`
+- 路径：`/api/courses/{courseId}/exam-questions/generate-answers`
+
+查询参数：`userId`。后端会遍历当前课程下 `answerText` 为空的真题，逐题调用单题答案生成逻辑，并返回本次批量处理的总题数、成功数和失败数。
 
 ## 12. 用户掌握状态与知识缺口
 
