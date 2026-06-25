@@ -88,7 +88,7 @@ public class MockExamService {
         if (knowledgeItems.isEmpty()) {
             throw new BusinessException("请先生成课程知识点，再生成模拟题");
         }
-        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(courseId, request.getUserId(), null, null, null);
+        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(courseId, request.getUserId(), null, null, null, null);
         List<KnowledgeItem> promptItems = selectPromptKnowledgeItems(knowledgeItems, stats);
 
         String systemPrompt = buildSystemPrompt();

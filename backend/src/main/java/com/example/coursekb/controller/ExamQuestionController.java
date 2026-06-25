@@ -8,6 +8,7 @@ import com.example.coursekb.vo.ExamQuestionKnowledgeMapVO;
 import com.example.coursekb.vo.ExamQuestionPageVO;
 import com.example.coursekb.vo.ExamQuestionVO;
 import java.util.List;
+import java.util.Map;
 import javax.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,11 +41,11 @@ public class ExamQuestionController {
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "12") Integer size,
             @RequestParam(required = false) Integer year,
-            @RequestParam(required = false) Long chapterId,
+            @RequestParam(name = "chapterIds", required = false) List<Long> chapterIds,
             @RequestParam(required = false) String questionType,
-            @RequestParam(required = false) Long materialId) {
+            @RequestParam(name = "materialIds", required = false) List<Long> materialIds) {
         return examQuestionService.listQuestions(
-                courseId, userId, year, chapterId, questionType, materialId, page, size);
+                courseId, userId, year, chapterIds, questionType, materialIds, page, size);
     }
 
     @PostMapping("/exam-questions/{questionId}/knowledge-map")
@@ -60,18 +61,34 @@ public class ExamQuestionController {
             @PathVariable Long courseId,
             @RequestParam Long userId,
             @RequestParam(required = false) Integer year,
-            @RequestParam(required = false) Long chapterId,
-            @RequestParam(required = false) String questionType) {
+            @RequestParam(name = "chapterIds", required = false) List<Long> chapterIds,
+            @RequestParam(required = false) String questionType,
+            @RequestParam(name = "materialIds", required = false) List<Long> materialIds) {
         return examQuestionService.listKnowledgeStats(
-                courseId, userId, year, chapterId, questionType);
+                courseId, userId, year, chapterIds, questionType, materialIds);
     }
 
     @GetMapping("/courses/{courseId}/exam-knowledge-trends")
     public List<ExamKnowledgeTrendVO> listKnowledgeTrends(
             @PathVariable Long courseId,
             @RequestParam Long userId,
-            @RequestParam(required = false) Long chapterId,
-            @RequestParam(required = false) String questionType) {
-        return examQuestionService.listKnowledgeTrends(courseId, userId, chapterId, questionType);
+            @RequestParam(name = "chapterIds", required = false) List<Long> chapterIds,
+            @RequestParam(required = false) String questionType,
+            @RequestParam(name = "materialIds", required = false) List<Long> materialIds) {
+        return examQuestionService.listKnowledgeTrends(courseId, userId, chapterIds, questionType, materialIds);
+    }
+
+    @PostMapping("/exam-questions/{questionId}/generate-answer")
+    public ExamQuestionVO generateAnswer(
+            @PathVariable Long questionId,
+            @RequestParam Long userId) {
+        return examQuestionService.generateAnswer(questionId, userId);
+    }
+
+    @PostMapping("/courses/{courseId}/exam-questions/generate-answers")
+    public Map<String, Object> generateBatchAnswers(
+            @PathVariable Long courseId,
+            @RequestParam Long userId) {
+        return examQuestionService.generateBatchAnswers(courseId, userId);
     }
 }

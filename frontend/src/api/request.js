@@ -1,8 +1,10 @@
 import axios from 'axios'
+import qs from 'qs'
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  timeout: 10000,
+  paramsSerializer: params => qs.stringify(params, { arrayFormat: 'repeat' })
 })
 
 request.interceptors.response.use(

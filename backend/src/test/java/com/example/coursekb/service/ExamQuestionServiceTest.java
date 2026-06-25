@@ -337,7 +337,7 @@ class ExamQuestionServiceTest {
         when(chapterRepository.findAllById(anyCollection()))
                 .thenReturn(Collections.emptyList());
 
-        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(7L, 3L, null, null, null);
+        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(7L, 3L, null, null, null, null);
 
         assertEquals(1, stats.size());
         assertEquals(2L, stats.get(0).getQuestionCount());

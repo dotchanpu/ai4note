@@ -81,7 +81,7 @@ public class SprintOutlineService {
             throw new BusinessException("请先生成课程知识点，再生成冲刺复习提纲");
         }
         List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(
-                courseId, request.getUserId(), null, null, null);
+                courseId, request.getUserId(), null, null, null, null);
 
         String systemPrompt = buildSystemPrompt();
         String userPrompt = buildUserPrompt(course, profile, knowledgeItems, stats, days, request.getCustomRequirement());

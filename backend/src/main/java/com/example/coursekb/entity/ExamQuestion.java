@@ -49,6 +49,12 @@ public class ExamQuestion {
     @Column(name = "source_page")
     private Integer sourcePage;
 
+    @Column(name = "answer_source", length = 512)
+    private String answerSource;
+
+    @Column(name = "answer_source_page")
+    private Integer answerSourcePage;
+
     @Column(name = "create_time", insertable = false, updatable = false)
     private LocalDateTime createTime;
 
@@ -142,6 +148,22 @@ public class ExamQuestion {
 
     public void setSourcePage(Integer sourcePage) {
         this.sourcePage = sourcePage;
+    }
+
+    public String getAnswerSource() {
+        return answerSource;
+    }
+
+    public void setAnswerSource(String answerSource) {
+        this.answerSource = answerSource;
+    }
+
+    public Integer getAnswerSourcePage() {
+        return answerSourcePage;
+    }
+
+    public void setAnswerSourcePage(Integer answerSourcePage) {
+        this.answerSourcePage = answerSourcePage;
     }
 
     public LocalDateTime getCreateTime() {

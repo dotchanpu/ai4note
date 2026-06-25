@@ -24,27 +24,54 @@
     </div>
 
     <section class="exam-control-panel">
-      <div class="exam-toolbar">
-        <div class="exam-filter-field">
-          <span>资料</span>
-          <el-select
-            v-model="filters.materialId"
-            clearable
-            placeholder="全部真题资料"
-            @change="reloadData"
-          >
-            <el-option
-              v-for="material in examMaterials"
-              :key="material.id"
-              :label="material.title"
-              :value="material.id"
-            />
-          </el-select>
+      <div class="exam-material-strip">
+        <div class="exam-strip-heading">
+          <div>
+            <p class="eyebrow">exam materials</p>
+            <h3>选择真题资料并触发抽题</h3>
+          </div>
+          <span>{{ examMaterials.length }} 份</span>
         </div>
+        <div class="exam-materials">
+          <article
+            v-for="material in examMaterials"
+            :key="material.id"
+            class="exam-material-card"
+            :class="{ active: selectedMaterialIds.includes(material.id) }"
+            @click="toggleMaterial(material.id)"
+          >
+            <div class="exam-material-copy">
+              <strong>{{ material.title }}</strong>
+              <small>{{ material.year || '未标年份' }} / {{ material.originalName }}</small>
+            </div>
+            <div class="exam-material-meta">
+              <span>{{ (material.fileType || 'file').toUpperCase() }}</span>
+              <span>{{ material.parsedChunkCount > 0 ? '已解析' : '未解析' }}</span>
+              <span>{{ material.questionCount > 0 ? '已抽 ' + material.questionCount + ' 题' : '未抽题' }}</span>
+            </div>
+            <div class="exam-material-actions">
+              <button
+                type="button"
+                :disabled="extractingMaterialIds.has(material.id)"
+                @click.stop="handleExtract(material)"
+              >
+                {{ extractingMaterialIds.has(material.id) ? '抽取中…' : '抽取题目' }}
+              </button>
+            </div>
+          </article>
+          <div v-if="examMaterials.length === 0" class="exam-empty-card">
+            <strong>还没有 EXAM 类型资料</strong>
+            <p>请先上传往年真题资料，再进行题目抽取。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="exam-toolbar">
         <div class="exam-filter-field">
           <span>章节</span>
           <el-select
-            v-model="filters.chapterId"
+            v-model="filters.chapterIds"
+            multiple
             clearable
             placeholder="全部章节"
             @change="reloadData"
@@ -82,67 +109,14 @@
           </el-select>
         </div>
         <button type="button" class="exam-refresh" @click="reloadData">刷新结果</button>
-      </div>
-
-      <div class="exam-material-strip">
-        <div class="exam-strip-heading">
-          <div>
-            <p class="eyebrow">exam materials</p>
-            <h3>选择真题资料并触发抽题</h3>
-          </div>
-          <span>{{ examMaterials.length }} 份</span>
-        </div>
-        <div v-if="selectedExamMaterial" class="exam-selected-card">
-          <div class="exam-selected-copy">
-            <p class="exam-selected-kicker">当前聚焦资料</p>
-            <strong>{{ selectedExamMaterial.title }}</strong>
-            <p>{{ selectedExamMaterial.year || '未标年份' }} / {{ selectedExamMaterial.originalName }}</p>
-          </div>
-          <div class="exam-selected-meta">
-            <span>{{ (selectedExamMaterial.fileType || 'file').toUpperCase() }}</span>
-            <span>{{ selectedExamMaterial.parsedChunkCount > 0 ? '已解析' : '未解析' }}</span>
-            <button
-              type="button"
-              :disabled="extractingMaterialId === selectedExamMaterial.id"
-              @click="handleExtract(selectedExamMaterial)"
-            >
-              {{ extractingMaterialId === selectedExamMaterial.id ? '抽取中…' : '抽取题目' }}
-            </button>
-          </div>
-        </div>
-        <div class="exam-materials">
-          <article
-            v-for="material in examMaterials"
-            :key="material.id"
-            class="exam-material-card"
-            :class="{ active: Number(filters.materialId) === material.id }"
-          >
-            <div class="exam-material-copy">
-              <strong>{{ material.title }}</strong>
-              <small>{{ material.year || '未标年份' }} / {{ material.originalName }}</small>
-            </div>
-            <div class="exam-material-meta">
-              <span>{{ (material.fileType || 'file').toUpperCase() }}</span>
-              <span>{{ material.parsedChunkCount > 0 ? '已解析' : '未解析' }}</span>
-            </div>
-            <div class="exam-material-actions">
-              <button type="button" class="exam-focus-button" @click="focusMaterial(material.id)">
-                {{ Number(filters.materialId) === material.id ? '当前筛选中' : '查看本资料题目' }}
-              </button>
-              <button
-                type="button"
-                :disabled="extractingMaterialId === material.id"
-                @click="handleExtract(material)"
-              >
-                {{ extractingMaterialId === material.id ? '抽取中…' : '抽取题目' }}
-              </button>
-            </div>
-          </article>
-          <div v-if="examMaterials.length === 0" class="exam-empty-card">
-            <strong>还没有 EXAM 类型资料</strong>
-            <p>请先上传往年真题资料，再进行题目抽取。</p>
-          </div>
-        </div>
+        <button
+          type="button"
+          class="exam-batch-answer"
+          :disabled="batchGenerating"
+          @click="handleBatchGenerateAnswers"
+        >
+          {{ batchGenerating ? '补全中…' : '一键补全答案' }}
+        </button>
       </div>
     </section>
 
@@ -222,8 +196,12 @@
               </div>
 
               <h4>{{ question.materialTitle || '未关联资料' }}</h4>
-              <p class="exam-question-text">{{ question.questionText }}</p>
+              <p class="exam-question-text">{{ formatQuestionText(question.questionText) }}</p>
               <p v-if="question.answerText" class="exam-answer-text">答案：{{ question.answerText }}</p>
+              <p v-if="question.answerSource" class="exam-answer-source">
+                参考：{{ question.answerSource }}
+                <template v-if="question.answerSourcePage"> 第 {{ question.answerSourcePage }} 页</template>
+              </p>
 
               <div class="exam-question-meta">
                 <span>{{ question.chapterTitle || '未关联章节' }}</span>
@@ -269,6 +247,16 @@
                   {{ mappingSavingQuestionId === question.id ? '保存中…' : '建立映射' }}
                 </button>
               </div>
+
+              <div class="exam-generate-answer">
+                <button
+                  type="button"
+                  :disabled="generatingAnswerQuestionId === question.id"
+                  @click="handleGenerateAnswer(question)"
+                >
+                  {{ generatingAnswerQuestionId === question.id ? '生成中…' : (question.answerText ? '重新生成' : '生成答案') }}
+                </button>
+              </div>
             </div>
           </article>
         </div>
@@ -282,8 +270,8 @@
           </div>
         </div>
         <div v-if="!questionTotal" class="exam-empty-card">
-          <strong>当前还没有真题题目</strong>
-          <p>从上方 EXAM 资料中抽取题目后，这里会显示题目列表。</p>
+          <strong>暂未选择真题资料</strong>
+          <p>请点击上方真题资料卡片选择要查看的试卷，或先抽取题目。</p>
         </div>
       </section>
     </div>
@@ -296,6 +284,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { parsePdf } from '../../api/material'
 import {
   extractExamQuestions,
+  generateAnswer,
+  generateBatchAnswers,
   listExamKnowledgeStats,
   listExamKnowledgeTrends,
   listExamQuestions,
@@ -337,29 +327,27 @@ const trends = ref([])
 const questionsLoading = ref(false)
 const statsLoading = ref(false)
 const trendsLoading = ref(false)
-const extractingMaterialId = ref(null)
+const extractingMaterialIds = reactive(new Set())
 const mappingSavingQuestionId = ref(null)
+const generatingAnswerQuestionId = ref(null)
+const batchGenerating = ref(false)
 const questionPage = ref(1)
 const questionTotal = ref(0)
 const totalQuestionPages = ref(0)
 const mappingDrafts = reactive({})
+const selectedMaterialIds = ref([])
 const filters = reactive({
   year: '',
-  chapterId: null,
-  questionType: null,
-  materialId: null
+  chapterIds: [],
+  questionType: null
 })
 
-const questionTypeOptions = ['单选题', '多选题', '名词解释', '简答题', '编程题', '设计题', '其他']
+const questionTypeOptions = ['单选题', '多选题', '填空题', '简答题', '编程题', '设计题', '其他']
 const MATERIAL_NOT_PARSED = 'Material must be parsed before exam extraction'
 const EXTRACTION_EXISTS = 'Exam questions already exist for this material'
 const PDF_ONLY = 'Only PDF exam materials support extraction'
 
 const examMaterials = computed(() => props.materials.filter(item => item.materialType === 'EXAM'))
-const selectedExamMaterial = computed(() => {
-  if (!examMaterials.value.length) return null
-  return examMaterials.value.find(item => item.id === Number(filters.materialId)) || examMaterials.value[0]
-})
 const maxTrendQuestionCount = computed(() => Math.max(
   1,
   ...trends.value.flatMap(trend => (
@@ -384,7 +372,9 @@ watch(
   () => props.preferredMaterialId,
   materialId => {
     if (!materialId) return
-    filters.materialId = materialId
+    if (!selectedMaterialIds.value.includes(materialId)) {
+      selectedMaterialIds.value.push(materialId)
+    }
     if (props.selectedCourse?.id) {
       reloadData()
     }
@@ -410,19 +400,25 @@ async function reloadData() {
   statsLoading.value = true
   trendsLoading.value = true
   try {
-    const [questionData, statData, trendData] = await Promise.all([
-      listExamQuestions(props.selectedCourse.id, props.currentUserId, {
+    if (normalizedFilters(true).materialIds && normalizedFilters(true).materialIds.length) {
+      const questionData = await listExamQuestions(props.selectedCourse.id, props.currentUserId, {
         ...normalizedFilters(true),
         page: questionPage.value,
         size: questionPageSize
-      }),
+      })
+      questions.value = questionData.items || []
+      questionTotal.value = questionData.total || 0
+      totalQuestionPages.value = questionData.totalPages || 0
+      questionPage.value = questionData.page || 1
+    } else {
+      questions.value = []
+      questionTotal.value = 0
+      totalQuestionPages.value = 0
+    }
+    const [statData, trendData] = await Promise.all([
       listExamKnowledgeStats(props.selectedCourse.id, props.currentUserId, normalizedFilters(false)),
       listExamKnowledgeTrends(props.selectedCourse.id, props.currentUserId, normalizedFilters(false))
     ])
-    questions.value = questionData.items || []
-    questionTotal.value = questionData.total || 0
-    totalQuestionPages.value = questionData.totalPages || 0
-    questionPage.value = questionData.page || 1
     stats.value = statData
     trends.value = trendData
   } catch (error) {
@@ -470,7 +466,7 @@ async function confirmParse(material) {
     return false
   }
 
-  extractingMaterialId.value = material.id
+  extractingMaterialIds.add(material.id)
   try {
     const result = await parsePdf(material.id, props.currentUserId)
     emit('material-parsed', {
@@ -485,7 +481,7 @@ async function confirmParse(material) {
     ElMessage.error(error.message)
     return false
   } finally {
-    extractingMaterialId.value = null
+    extractingMaterialIds.delete(material.id)
   }
 }
 
@@ -507,10 +503,13 @@ async function confirmOverwrite() {
 }
 
 async function doExtract(material, overwrite) {
-  extractingMaterialId.value = material.id
+  extractingMaterialIds.add(material.id)
   try {
     const result = await extractExamQuestions(material.id, props.currentUserId, overwrite)
-    filters.materialId = material.id
+    if (!selectedMaterialIds.value.includes(material.id)) {
+      selectedMaterialIds.value.push(material.id)
+    }
+    material.questionCount = result.length
     await reloadData()
     emit('stats-changed')
     ElMessage.success(`已抽取 ${result.length} 道题目`)
@@ -535,7 +534,7 @@ async function doExtract(material, overwrite) {
     }
     ElMessage.error(error.message)
   } finally {
-    extractingMaterialId.value = null
+    extractingMaterialIds.delete(material.id)
   }
 }
 
@@ -563,18 +562,62 @@ async function submitMapping(question) {
   }
 }
 
-function focusMaterial(materialId) {
-  if (Number(filters.materialId) === materialId) return
-  filters.materialId = materialId
+function formatQuestionText(text) {
+  if (!text) return ''
+  return text
+    .replace(/([^\n])([A-Ea-e][\.\)、．])\s*(?=\S)/g, '$1\n$2')
+    .replace(/([^\n])([①-⑧])/g, '$1\n$2')
+    .replace(/^\n/, '')
+}
+
+async function handleGenerateAnswer(question) {
+  if (!props.currentUserId) return
+  generatingAnswerQuestionId.value = question.id
+  try {
+    const result = await generateAnswer(question.id, props.currentUserId)
+    question.answerText = result.answerText
+    question.answerSource = result.answerSource
+    question.answerSourcePage = result.answerSourcePage
+    ElMessage.success('答案已生成')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    generatingAnswerQuestionId.value = null
+  }
+}
+
+async function handleBatchGenerateAnswers() {
+  if (!props.currentUserId || !props.selectedCourse?.id) return
+  batchGenerating.value = true
+  try {
+    const result = await generateBatchAnswers(props.selectedCourse.id, props.currentUserId)
+    ElMessage.success(`已处理 ${result.total} 题，成功 ${result.success}，失败 ${result.failed}`)
+    await reloadData()
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    batchGenerating.value = false
+  }
+}
+
+function toggleMaterial(materialId) {
+  const index = selectedMaterialIds.value.indexOf(materialId)
+  if (index >= 0) {
+    selectedMaterialIds.value.splice(index, 1)
+  } else {
+    selectedMaterialIds.value.push(materialId)
+  }
   reloadData()
 }
 
-function normalizedFilters(includeMaterialId) {
+function normalizedFilters(includeMaterialIds) {
   return {
     year: filters.year ? Number(filters.year) : undefined,
-    chapterId: filters.chapterId || undefined,
+    chapterIds: filters.chapterIds.length ? filters.chapterIds : undefined,
     questionType: filters.questionType || undefined,
-    materialId: includeMaterialId ? filters.materialId || undefined : undefined
+    materialIds: includeMaterialIds
+      ? selectedMaterialIds.value.slice()
+      : undefined
   }
 }
 
@@ -586,9 +629,9 @@ function resetState() {
   stats.value = []
   trends.value = []
   filters.year = ''
-  filters.chapterId = null
+  filters.chapterIds = []
   filters.questionType = null
-  filters.materialId = props.preferredMaterialId || null
+  selectedMaterialIds.value = []
   lastQuestionFilterKey.value = ''
   Object.keys(mappingDrafts).forEach(key => {
     delete mappingDrafts[key]
@@ -677,9 +720,10 @@ function resetState() {
 
 .exam-toolbar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) 148px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 148px 148px;
   gap: 12px;
   align-items: end;
+  margin-top: 28px;
 }
 
 .exam-filter-field {
@@ -710,18 +754,22 @@ function resetState() {
   box-shadow: none;
 }
 
-.exam-refresh {
+.exam-refresh,
+.exam-batch-answer {
   min-height: 52px;
   border: 1px solid #111;
-  background: #111;
   width: 148px;
-  color: #111;
   font-weight: 700;
+}
+
+.exam-refresh {
+  background: #111;
   color: #fff;
 }
 
-.exam-material-strip {
-  margin-top: 28px;
+.exam-batch-answer {
+  background: #ffef5a;
+  color: #111;
 }
 
 .exam-strip-heading,
@@ -755,45 +803,6 @@ function resetState() {
   margin-top: 18px;
 }
 
-.exam-selected-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: end;
-  margin-top: 18px;
-  padding: 20px 22px;
-  border: 1px solid #111;
-  background: #fff7df;
-  box-shadow: 8px 8px 0 #ff3151;
-}
-
-.exam-selected-kicker {
-  margin: 0 0 10px;
-  color: #666;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.exam-selected-copy strong {
-  display: block;
-  font-size: 28px;
-  letter-spacing: -0.04em;
-}
-
-.exam-selected-copy p:last-child {
-  margin: 10px 0 0;
-  color: #555;
-  line-height: 1.6;
-}
-
-.exam-selected-meta {
-  display: grid;
-  justify-items: end;
-  gap: 10px;
-}
-
 .exam-material-card,
 .exam-stat-card,
 .exam-question-card {
@@ -806,6 +815,7 @@ function resetState() {
   gap: 16px;
   padding: 18px;
   box-shadow: 8px 8px 0 #111;
+  cursor: pointer;
 }
 
 .exam-material-card.active {
@@ -853,12 +863,8 @@ function resetState() {
 
 .exam-material-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
-}
-
-.exam-focus-button {
-  background: #fff;
 }
 
 .exam-content {
@@ -1025,9 +1031,16 @@ function resetState() {
 }
 
 .exam-answer-text {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
   padding: 10px 12px;
   background: #f5f3ef;
+}
+
+.exam-answer-source {
+  margin: 0 0 12px;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .exam-question-meta {
@@ -1084,6 +1097,19 @@ function resetState() {
   width: 100%;
 }
 
+.exam-generate-answer {
+  margin-top: 4px;
+}
+
+.exam-generate-answer button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #111;
+  background: #14cbea;
+  color: #111;
+  font-weight: 700;
+}
+
 .exam-empty-card {
   padding: 22px;
   box-shadow: 8px 8px 0 #111;
@@ -1100,15 +1126,12 @@ function resetState() {
   }
 
   .exam-toolbar {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
   }
 
-  .exam-selected-card {
-    grid-template-columns: 1fr;
-  }
-
-  .exam-selected-meta {
-    justify-items: start;
+  .exam-refresh,
+  .exam-batch-answer {
+    width: 100%;
   }
 
   .exam-heading > p {
@@ -1149,7 +1172,15 @@ function resetState() {
     margin-top: 18px;
   }
 
-  .exam-toolbar,
+  .exam-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-refresh,
+  .exam-batch-answer {
+    width: 100%;
+  }
+
   .exam-mapping-editor {
     grid-template-columns: 1fr;
   }

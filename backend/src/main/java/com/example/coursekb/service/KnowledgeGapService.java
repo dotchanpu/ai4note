@@ -330,7 +330,7 @@ public class KnowledgeGapService {
     private Map<Long, ExamKnowledgeStatVO> loadExamStatsForCourseIds(Set<Long> courseIds, Long userId) {
         Map<Long, ExamKnowledgeStatVO> result = new LinkedHashMap<>();
         for (Long courseId : courseIds) {
-            for (ExamKnowledgeStatVO stat : examQuestionService.listKnowledgeStats(courseId, userId, null, null, null)) {
+            for (ExamKnowledgeStatVO stat : examQuestionService.listKnowledgeStats(courseId, userId, null, null, null, null)) {
                 result.put(stat.getKnowledgeItemId(), stat);
             }
         }

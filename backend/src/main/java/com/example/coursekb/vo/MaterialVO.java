@@ -18,8 +18,9 @@ public class MaterialVO {
     private String fileType;
     private Long fileSize;
     private Long parsedChunkCount;
+    private Long questionCount;
 
-    public static MaterialVO from(Material material, MaterialFile file, long parsedChunkCount) {
+    public static MaterialVO from(Material material, MaterialFile file, long parsedChunkCount, long questionCount) {
         MaterialVO result = new MaterialVO();
         result.id = material.getId();
         result.courseId = material.getCourseId();
@@ -31,6 +32,7 @@ public class MaterialVO {
         result.key = material.getKey();
         result.uploadTime = material.getUploadTime();
         result.parsedChunkCount = parsedChunkCount;
+        result.questionCount = questionCount;
         if (file != null) {
             result.originalName = file.getOriginalName();
             result.fileType = file.getFileType();
@@ -89,5 +91,9 @@ public class MaterialVO {
 
     public Long getParsedChunkCount() {
         return parsedChunkCount;
+    }
+
+    public Long getQuestionCount() {
+        return questionCount;
     }
 }

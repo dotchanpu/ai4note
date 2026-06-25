@@ -13,4 +13,8 @@ public interface ExamQuestionRepository extends JpaRepository<ExamQuestion, Long
     List<ExamQuestion> findByMaterialIdOrderByIdAsc(Long materialId);
 
     Optional<ExamQuestion> findByIdAndCourseId(Long id, Long courseId);
+
+    List<ExamQuestion> findByCourseIdAndAnswerTextIsNullOrderByIdAsc(Long courseId);
+
+    long countByCourseIdAndAnswerTextIsNull(Long courseId);
 }

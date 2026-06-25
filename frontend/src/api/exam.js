@@ -30,3 +30,17 @@ export function listExamKnowledgeTrends(courseId, userId, filters = {}) {
     params: { userId, ...filters }
   })
 }
+
+export function generateAnswer(questionId, userId) {
+  return request.post(`/exam-questions/${questionId}/generate-answer`, null, {
+    params: { userId },
+    timeout: 120000
+  })
+}
+
+export function generateBatchAnswers(courseId, userId) {
+  return request.post(`/courses/${courseId}/exam-questions/generate-answers`, null, {
+    params: { userId },
+    timeout: 300000
+  })
+}

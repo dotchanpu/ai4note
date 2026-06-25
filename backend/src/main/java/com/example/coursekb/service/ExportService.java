@@ -368,7 +368,7 @@ public class ExportService {
                 .filter(item -> scope.chapterIds.isEmpty() || scope.chapterIds.contains(item.getChapterId()))
                 .collect(Collectors.toList());
         if (scope.includeExamStats) {
-            payload.examStats = examQuestionService.listKnowledgeStats(course.getId(), userId, null, null, null);
+            payload.examStats = examQuestionService.listKnowledgeStats(course.getId(), userId, null, null, null, null);
         }
         payload.relatedCourses = loadRelatedCoursePayloads(course.getId(), userId, scope);
         return payload;

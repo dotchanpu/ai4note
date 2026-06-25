@@ -22,6 +22,8 @@ public class ExamQuestionVO {
     private LocalDateTime createTime;
     private String materialTitle;
     private String chapterTitle;
+    private String answerSource;
+    private Integer answerSourcePage;
     private List<ExamQuestionKnowledgeMapVO> mappings;
 
     public static ExamQuestionVO from(
@@ -47,6 +49,8 @@ public class ExamQuestionVO {
         result.createTime = question.getCreateTime();
         result.materialTitle = materialTitle;
         result.chapterTitle = chapterTitle;
+        result.answerSource = question.getAnswerSource();
+        result.answerSourcePage = question.getAnswerSourcePage();
         result.mappings = mappings == null ? Collections.emptyList() : mappings;
         return result;
     }
@@ -109,6 +113,14 @@ public class ExamQuestionVO {
 
     public String getChapterTitle() {
         return chapterTitle;
+    }
+
+    public String getAnswerSource() {
+        return answerSource;
+    }
+
+    public Integer getAnswerSourcePage() {
+        return answerSourcePage;
     }
 
     public List<ExamQuestionKnowledgeMapVO> getMappings() {

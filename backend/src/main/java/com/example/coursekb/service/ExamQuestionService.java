@@ -139,13 +139,13 @@ public class ExamQuestionService {
             Long courseId,
             Long userId,
             Integer year,
-            Long chapterId,
+            List<Long> chapterIds,
             String questionType,
-            Long materialId,
+            List<Long> materialIds,
             Integer page,
             Integer size) {
         courseService.getOwnedCourse(courseId, userId);
-        List<ExamQuestion> questions = filterQuestions(courseId, year, chapterId, questionType, materialId);
+        List<ExamQuestion> questions = filterQuestions(courseId, year, chapterIds, questionType, materialIds);
         int safePage = normalizePage(page);
         int safeSize = normalizePageSize(size);
         long total = questions.size();
@@ -156,13 +156,15 @@ public class ExamQuestionService {
     }
 
     private List<ExamQuestion> filterQuestions(
-            Long courseId, Integer year, Long chapterId, String questionType, Long materialId) {
+            Long courseId, Integer year, List<Long> chapterIds, String questionType, List<Long> materialIds) {
         String normalizedQuestionType = normalizeQuestionType(questionType);
         return examQuestionRepository.findByCourseIdOrderByExamYearDescIdDesc(courseId)
                 .stream()
                 .filter(question -> year == null || Objects.equals(year, question.getExamYear()))
-                .filter(question -> chapterId == null || Objects.equals(chapterId, question.getChapterId()))
-                .filter(question -> materialId == null || Objects.equals(materialId, question.getMaterialId()))
+                .filter(question -> chapterIds == null || chapterIds.isEmpty()
+                        || (question.getChapterId() != null && chapterIds.contains(question.getChapterId())))
+                .filter(question -> materialIds == null
+                        || (question.getMaterialId() != null && materialIds.contains(question.getMaterialId())))
                 .filter(question -> normalizedQuestionType == null
                         || normalizedQuestionType.equals(normalizeQuestionType(question.getQuestionType())))
                 .sorted(this::compareQuestions)
@@ -197,10 +199,11 @@ public class ExamQuestionService {
             Long courseId,
             Long userId,
             Integer year,
-            Long chapterId,
-            String questionType) {
+            List<Long> chapterIds,
+            String questionType,
+            List<Long> materialIds) {
         courseService.getOwnedCourse(courseId, userId);
-        List<ExamQuestion> filteredQuestions = filterQuestions(courseId, year, chapterId, questionType, null);
+        List<ExamQuestion> filteredQuestions = filterQuestions(courseId, year, chapterIds, questionType, materialIds);
         if (filteredQuestions.isEmpty()) {
             return Collections.emptyList();
         }
@@ -272,10 +275,11 @@ public class ExamQuestionService {
     public List<ExamKnowledgeTrendVO> listKnowledgeTrends(
             Long courseId,
             Long userId,
-            Long chapterId,
-            String questionType) {
+            List<Long> chapterIds,
+            String questionType,
+            List<Long> materialIds) {
         courseService.getOwnedCourse(courseId, userId);
-        List<ExamQuestion> filteredQuestions = filterQuestions(courseId, null, chapterId, questionType, null)
+        List<ExamQuestion> filteredQuestions = filterQuestions(courseId, null, chapterIds, questionType, materialIds)
                 .stream()
                 .filter(question -> question.getExamYear() != null)
                 .collect(Collectors.toList());
@@ -352,6 +356,227 @@ public class ExamQuestionService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
+    public ExamQuestionVO generateAnswer(Long questionId, Long userId) {
+        ExamQuestion question = examQuestionRepository.findById(questionId)
+                .orElseThrow(() -> new BusinessException("Exam question does not exist"));
+        courseService.getOwnedCourse(question.getCourseId(), userId);
+
+        List<Material> referenceMaterials = materialRepository
+                .findByCourseIdAndMaterialTypeInOrderByUploadTimeDesc(question.getCourseId(),
+                        java.util.Arrays.asList("SLIDE", "NOTE"));
+        if (referenceMaterials.isEmpty()) {
+            throw new BusinessException("No SLIDE or NOTE materials found in this course for answer generation");
+        }
+
+        List<Material> sortedMaterials = new ArrayList<>(referenceMaterials);
+        sortedMaterials.sort((a, b) -> {
+            int typeCompare = Integer.compare(materialTypePriority(a.getMaterialType()),
+                    materialTypePriority(b.getMaterialType()));
+            if (typeCompare != 0) {
+                return typeCompare;
+            }
+            return Comparator.nullsFirst(Integer::compareTo).compare(a.getYear(), b.getYear());
+        });
+
+        List<Long> materialIds = sortedMaterials.stream().map(Material::getId).collect(Collectors.toList());
+        List<TextChunk> allChunks = textChunkRepository
+                .findByMaterialIdInOrderByPageNoAscChunkIndexAsc(materialIds);
+        Map<Long, Material> materialById = sortedMaterials.stream()
+                .collect(Collectors.toMap(Material::getId, Function.identity()));
+
+        String questionText = question.getQuestionText();
+        List<TextChunk> relevantChunks = selectRelevantChunks(questionText, allChunks, materialById);
+
+        String systemPrompt = buildAnswerGenSystemPrompt();
+        String userPrompt = buildAnswerGenUserPrompt(question, relevantChunks, materialById);
+        String json = deepSeekService.generateJson(userId, question.getCourseId(),
+                systemPrompt, userPrompt, null, 2048);
+
+        AnswerGenPayload payload = parseAnswerGenJson(json);
+        question.setAnswerText(payload.answerText);
+        question.setAnswerSource(payload.answerSource);
+        question.setAnswerSourcePage(payload.answerSourcePage);
+        examQuestionRepository.save(question);
+
+        return toQuestionVOs(Collections.singletonList(question)).get(0);
+    }
+
+    @Transactional
+    public Map<String, Object> generateBatchAnswers(Long courseId, Long userId) {
+        courseService.getOwnedCourse(courseId, userId);
+        List<ExamQuestion> unanswered = examQuestionRepository
+                .findByCourseIdAndAnswerTextIsNullOrderByIdAsc(courseId);
+        int success = 0;
+        int failed = 0;
+        for (ExamQuestion question : unanswered) {
+            try {
+                generateAnswer(question.getId(), userId);
+                success++;
+            } catch (Exception exception) {
+                log.warn("Failed to generate answer for questionId={}, error={}",
+                        question.getId(), exception.getMessage());
+                failed++;
+            }
+        }
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        resultMap.put("total", unanswered.size());
+        resultMap.put("success", success);
+        resultMap.put("failed", failed);
+        return resultMap;
+    }
+
+    private int materialTypePriority(String materialType) {
+        if ("SLIDE".equalsIgnoreCase(materialType)) {
+            return 0;
+        }
+        if ("NOTE".equalsIgnoreCase(materialType)) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private List<TextChunk> selectRelevantChunks(
+            String questionText,
+            List<TextChunk> allChunks,
+            Map<Long, Material> materialById) {
+        final int maxTotalChars = 2000;
+        String lowerQuestion = questionText == null ? "" : questionText.toLowerCase(Locale.ROOT);
+        List<ChunkCandidate> candidates = new ArrayList<>();
+        for (TextChunk chunk : allChunks) {
+            String content = chunk.getContent();
+            if (content == null || content.trim().isEmpty()) {
+                continue;
+            }
+            String lowerContent = content.toLowerCase(Locale.ROOT);
+            int score = relevanceScore(lowerQuestion, lowerContent);
+            if (score > 0) {
+                Material material = materialById.get(chunk.getMaterialId());
+                candidates.add(new ChunkCandidate(chunk, score,
+                        material != null ? material.getMaterialType() : null));
+            }
+        }
+        candidates.sort((a, b) -> {
+            int typeCompare = Integer.compare(
+                    materialTypePriority(a.materialType),
+                    materialTypePriority(b.materialType));
+            if (typeCompare != 0) {
+                return typeCompare;
+            }
+            int scoreCompare = Integer.compare(b.score, a.score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+            return Integer.compare(a.chunk.getPageNo() != null ? a.chunk.getPageNo() : 0,
+                    b.chunk.getPageNo() != null ? b.chunk.getPageNo() : 0);
+        });
+        List<TextChunk> selected = new ArrayList<>();
+        int totalChars = 0;
+        for (ChunkCandidate candidate : candidates) {
+            int chunkLen = candidate.chunk.getContent().length();
+            if (totalChars + chunkLen > maxTotalChars && !selected.isEmpty()) {
+                continue;
+            }
+            selected.add(candidate.chunk);
+            totalChars += chunkLen;
+        }
+        return selected;
+    }
+
+    private int relevanceScore(String lowerQuestion, String lowerContent) {
+        int score = 0;
+        String[] questionTokens = lowerQuestion.replaceAll("[\\p{Punct}\\p{Blank}，。、；：！？…—]", " ")
+                .replaceAll("\\s+", " ").trim().split(" ");
+        for (String token : questionTokens) {
+            if (token.length() < 2) {
+                continue;
+            }
+            if (lowerContent.contains(token)) {
+                score += token.length();
+            }
+        }
+        return score;
+    }
+
+    private String buildAnswerGenSystemPrompt() {
+        return "You are AI4Note's exam answer generation assistant. "
+                + "Generate a concise, accurate answer for the given exam question. "
+                + "Return a strict JSON object with the shape {\"answerText\":\"...\",\"answerSource\":\"...\",\"answerSourcePage\":null}. "
+                + "answerText is required. "
+                + "For answerSource, follow these rules:\n"
+                + "1. If the provided excerpts contain enough information to answer, "
+                + "set answerSource to the exact \"Source:\" header line formatted as \"TYPE:TITLE\", "
+                + "e.g. \"SLIDE:计算机网络课件\". Set answerSourcePage from the \"Page:\" header.\n"
+                + "2. If the excerpts are not sufficient, you may use your own knowledge to answer, "
+                + "but answerSource MUST clearly state: "
+                + "\"上传资料中未找到相关内容，以下答案由 AI 综合知识生成\". "
+                + "Set answerSourcePage to null in this case.\n"
+                + "3. Never invent a fake reference — never cite a textbook, author, or paper "
+                + "that does not appear in the excerpt headers. "
+                + "Do not output markdown or explanations.";
+    }
+
+    private String buildAnswerGenUserPrompt(
+            ExamQuestion question,
+            List<TextChunk> chunks,
+            Map<Long, Material> materialById) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Question type: ").append(
+                question.getQuestionType() != null ? question.getQuestionType() : "UNKNOWN").append('\n');
+        builder.append("Question text:\n").append(question.getQuestionText()).append("\n\n");
+        builder.append("Reference material excerpts:\n");
+        for (int i = 0; i < chunks.size(); i++) {
+            TextChunk chunk = chunks.get(i);
+            Material material = materialById.get(chunk.getMaterialId());
+            builder.append("---- Excerpt ").append(i + 1).append(" ----\n");
+            if (material != null) {
+                builder.append("Source: ").append(material.getTitle())
+                        .append(" (").append(material.getMaterialType()).append(")\n");
+            }
+            if (chunk.getPageNo() != null) {
+                builder.append("Page: ").append(chunk.getPageNo()).append('\n');
+            }
+            builder.append(chunk.getContent()).append('\n');
+        }
+        return builder.toString();
+    }
+
+    private AnswerGenPayload parseAnswerGenJson(String json) {
+        try {
+            JsonNode root = parseAiExtractionJson(json);
+            AnswerGenPayload payload = new AnswerGenPayload();
+            payload.answerText = normalizeOptionalText(root.path("answerText").asText(null));
+            payload.answerSource = normalizeOptionalText(root.path("answerSource").asText(null));
+            JsonNode pageNode = root.path("answerSourcePage");
+            payload.answerSourcePage = pageNode.isNull() || pageNode.isMissingNode() ? null : pageNode.asInt();
+            if (payload.answerText == null || payload.answerText.trim().isEmpty()) {
+                throw new BusinessException("AI did not return a valid answer");
+            }
+            return payload;
+        } catch (JsonProcessingException exception) {
+            log.warn("Failed to parse answer-gen JSON, raw={}", abbreviateForLog(json), exception);
+            throw new BusinessException("AI answer generation JSON could not be parsed");
+        }
+    }
+
+    private static class ChunkCandidate {
+        private final TextChunk chunk;
+        private final int score;
+        private final String materialType;
+
+        private ChunkCandidate(TextChunk chunk, int score, String materialType) {
+            this.chunk = chunk;
+            this.score = score;
+            this.materialType = materialType;
+        }
+    }
+
+    private static class AnswerGenPayload {
+        private String answerText;
+        private String answerSource;
+        private Integer answerSourcePage;
+    }
+
     private void ensureExamMaterial(Material material) {
         if (!"EXAM".equalsIgnoreCase(material.getMaterialType())) {
             throw new BusinessException("Only EXAM materials support exam extraction");
@@ -378,6 +603,9 @@ public class ExamQuestionService {
                 + "Return a strict JSON object with the shape {\"questions\":[...]}. "
                 + "Each question may only contain questionNo, questionType, questionText, answerText, difficultyLevel, score, examYear, sourcePage. "
                 + "questionText is required and must not be empty. "
+                + "questionText must include the complete question stem AND all answer choices (A/B/C/D) exactly as printed. "
+                + "answerText must only be filled when the source material explicitly contains an answer or solution. "
+                + "Never invent or guess answers. If the source does not show an answer, set answerText to null. "
                 + "Use null for unknown fields. Do not output markdown or explanations.";
     }
 
@@ -924,7 +1152,13 @@ public class ExamQuestionService {
             case "名词解释":
             case "DEFINITION":
             case "TERM_DEFINITION":
-                return "名词解释";
+                return "简答题";
+            case "填空":
+            case "填空题":
+            case "FILL_BLANK":
+            case "FILL_IN_THE_BLANK":
+            case "FILL":
+                return "填空题";
             case "简答":
             case "简答题":
             case "SHORT_ANSWER":

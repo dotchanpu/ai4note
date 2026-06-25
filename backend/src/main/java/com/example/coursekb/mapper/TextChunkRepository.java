@@ -10,4 +10,6 @@ public interface TextChunkRepository extends JpaRepository<TextChunk, Long> {
     long countByMaterialId(Long materialId);
 
     void deleteByMaterialId(Long materialId);
+
+    List<TextChunk> findByMaterialIdInOrderByPageNoAscChunkIndexAsc(List<Long> materialIds);
 }
