@@ -95,7 +95,7 @@ class ReviewAssetServiceTest {
         when(courseService.getOwnedCourse(8L, 3L)).thenReturn(prerequisiteCourse);
         when(knowledgeItemRepository.findByCourseIdOrderByImportanceLevelDescIdDesc(8L))
                 .thenReturn(Collections.singletonList(prerequisiteItem));
-        when(examQuestionService.listKnowledgeStats(7L, 3L, null, null, null))
+        when(examQuestionService.listKnowledgeStats(7L, 3L, null, null, null, null))
                 .thenReturn(Collections.emptyList());
         when(aiGenerationTaskService.createTask(eq(3L), eq(7L), eq("REVIEW_GENERATION"), anyString(), isNull(), isNull(), isNull()))
                 .thenReturn(task);
@@ -127,7 +127,7 @@ class ReviewAssetServiceTest {
         when(courseService.getOwnedCourse(7L, 3L)).thenReturn(currentCourse);
         when(knowledgeItemRepository.findByCourseIdOrderByImportanceLevelDescIdDesc(7L))
                 .thenReturn(Collections.singletonList(currentItem));
-        when(examQuestionService.listKnowledgeStats(7L, 3L, null, null, null))
+        when(examQuestionService.listKnowledgeStats(7L, 3L, null, null, null, null))
                 .thenReturn(Collections.emptyList());
         when(aiGenerationTaskService.createTask(eq(3L), eq(7L), eq("REVIEW_GENERATION"), anyString(), isNull(), isNull(), isNull()))
                 .thenReturn(task);
