@@ -208,7 +208,7 @@ public class MaterialService {
             throw new BusinessException("Failed to read generated material file size");
         }
         materialFile = materialFileRepository.save(materialFile);
-        return MaterialVO.from(material, materialFile, 0);
+        return MaterialVO.from(material, materialFile, 0, 0);
     }
 
     private MaterialVO toVO(Material material) {

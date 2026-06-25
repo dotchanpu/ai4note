@@ -100,7 +100,7 @@ public class ReviewAssetService {
                 request.getUserId(),
                 shouldIncludePrerequisites(request));
         List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(
-                courseId, request.getUserId(), null, null, null);
+                courseId, request.getUserId(), null, null, null, null);
 
         String systemPrompt = buildSystemPrompt(outputType);
         String userPrompt = buildUserPrompt(course, profile, knowledgeItems, prerequisiteKnowledgeGroups, stats, request);
