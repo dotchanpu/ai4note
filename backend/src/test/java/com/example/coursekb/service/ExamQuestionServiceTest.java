@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -12,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -205,6 +207,40 @@ class ExamQuestionServiceTest {
         assertEquals(1, result.size());
         assertEquals("Define stack", result.get(0).getQuestionText());
         assertEquals("其他", result.get(0).getQuestionType());
+    }
+
+    @Test
+    void extractQuestionsSplitsBatchWhenValidJsonMissesTrailingQuestionPages() {
+        Material material = buildMaterial(11L, 7L, "EXAM");
+        com.example.coursekb.entity.MaterialFile file = new com.example.coursekb.entity.MaterialFile();
+        file.setMaterialId(11L);
+        file.setFileType("pdf");
+        AtomicReference<List<ExamQuestion>> savedQuestions = new AtomicReference<>();
+        when(materialService.getOwnedMaterial(11L, 3L)).thenReturn(material);
+        when(materialFileRepository.findByMaterialId(11L)).thenReturn(Optional.of(file));
+        when(textChunkRepository.findByMaterialIdOrderByChunkIndexAsc(11L)).thenReturn(Arrays.asList(
+                buildChunk(11L, 1, "一、选择题\n1. 第一题 A.甲 B.乙 C.丙 D.丁"),
+                buildChunk(11L, 2, "三、简答题\n1. 简述 MapReduce 的基本思想。")));
+        when(examQuestionRepository.countByMaterialId(11L)).thenReturn(0L);
+        when(deepSeekService.generateJson(anyLong(), anyLong(), anyString(), anyString(), isNull(), anyInt()))
+                .thenReturn(
+                        "{\"questions\":[{\"questionNo\":\"1\",\"questionType\":\"单选题\",\"questionText\":\"第一题\",\"sourcePage\":1}]}",
+                        "{\"questions\":[{\"questionNo\":\"1\",\"questionType\":\"单选题\",\"questionText\":\"第一题\",\"sourcePage\":1}]}",
+                        "{\"questions\":[{\"questionNo\":\"1\",\"questionType\":\"short answer\",\"questionText\":\"简述 MapReduce 的基本思想。\",\"sourcePage\":2}]}");
+        when(examQuestionRepository.saveAll(anyCollection())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<ExamQuestion> questions = (List<ExamQuestion>) invocation.getArgument(0);
+            savedQuestions.set(questions);
+            return questions;
+        });
+
+        List<ExamQuestionVO> result = examQuestionService.extractQuestions(11L, 3L, false);
+
+        assertEquals(2, result.size());
+        assertTrue(result.stream().anyMatch(question -> "单选题".equals(question.getQuestionType())));
+        assertTrue(result.stream().anyMatch(question -> "简答题".equals(question.getQuestionType())));
+        assertEquals(2, savedQuestions.get().size());
+        verify(deepSeekService, times(3)).generateJson(anyLong(), anyLong(), anyString(), anyString(), isNull(), anyInt());
     }
 
     @Test

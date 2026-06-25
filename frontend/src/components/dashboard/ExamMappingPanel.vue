@@ -381,6 +381,15 @@ watch(
   }
 )
 
+watch(
+  () => props.materials.length,
+  (current, previous) => {
+    if (current < previous && props.selectedCourse?.id) {
+      reloadData()
+    }
+  }
+)
+
 watch(questionPage, (page, previousPage) => {
   if (page === previousPage || !props.selectedCourse?.id) return
   reloadData()
@@ -432,8 +441,9 @@ async function reloadData() {
 
 async function handleExtract(material) {
   if (!props.currentUserId) return
-  if (material.fileType?.toLowerCase() !== 'pdf') {
-    ElMessage.warning('当前 EXAM 抽题主流程仅支持 PDF 资料')
+  const supported = ['pdf', 'doc', 'docx', 'md', 'txt']
+  if (!supported.includes(material.fileType?.toLowerCase())) {
+    ElMessage.warning('不支持的真题文件格式；支持 PDF、DOC、DOCX、MD、TXT')
     return
   }
 
@@ -529,7 +539,7 @@ async function doExtract(material, overwrite) {
       return
     }
     if (error.message === PDF_ONLY || error.code === 'EXAM_PDF_ONLY') {
-      ElMessage.warning('当前 EXAM 抽题主流程仅支持 PDF 资料')
+      ElMessage.warning('不支持的真题文件格式；支持 PDF、DOC、DOCX、MD、TXT')
       return
     }
     ElMessage.error(error.message)
