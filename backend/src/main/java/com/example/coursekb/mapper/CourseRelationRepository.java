@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CourseRelationRepository extends JpaRepository<CourseRelation, Long> {
     List<CourseRelation> findByCourseIdOrderBySortOrderAscIdAsc(Long courseId);
 
+    List<CourseRelation> findByCourseIdInOrderByCourseIdAscSortOrderAscIdAsc(List<Long> courseIds);
+
     Optional<CourseRelation> findByIdAndCourseId(Long id, Long courseId);
 
     boolean existsByCourseIdAndRelatedCourseId(Long courseId, Long relatedCourseId);

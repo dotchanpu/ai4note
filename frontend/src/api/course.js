@@ -44,6 +44,10 @@ export function listCourseRelations(courseId, userId) {
   return request.get(`/courses/${courseId}/relations`, { params: { userId } })
 }
 
+export function listAllCourseRelations(userId) {
+  return request.get('/course-relations', { params: { userId } })
+}
+
 export function createCourseRelation(courseId, userId, data) {
   return request.post(`/courses/${courseId}/relations`, data, { params: { userId } })
 }

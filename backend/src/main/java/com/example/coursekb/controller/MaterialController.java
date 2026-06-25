@@ -8,12 +8,29 @@ import com.example.coursekb.service.MaterialSimilarityService;
 import com.example.coursekb.service.MaterialSummaryService;
 import com.example.coursekb.service.PdfParseService;
 import com.example.coursekb.entity.TextChunk;
+import com.example.coursekb.entity.MaterialFile;
 import com.example.coursekb.exception.BusinessException;
 import com.example.coursekb.vo.MaterialVO;
 import com.example.coursekb.vo.MaterialSimilarityVO;
 import com.example.coursekb.vo.PdfParseResultVO;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.extractor.WordExtractor;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -59,6 +76,73 @@ public class MaterialController {
             @PathVariable Long materialId,
             @RequestParam Long userId) {
         return materialService.detail(materialId, userId);
+    }
+
+    @GetMapping("/materials/{materialId}/preview")
+    public ResponseEntity<String> preview(
+            @PathVariable Long materialId,
+            @RequestParam Long userId) {
+        MaterialFile file = materialService.getOwnedMaterialFile(materialId, userId);
+        String fileType = file.getFileType() == null ? "" : file.getFileType().toLowerCase(Locale.ROOT);
+        if (!"md".equals(fileType) && !"txt".equals(fileType) && !"doc".equals(fileType) && !"docx".equals(fileType)) {
+            throw new BusinessException("Current material is not a text preview file");
+        }
+        try {
+            String content = readPreviewContent(materialService.resolveFilePath(materialId, userId), fileType);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType("text/plain; charset=UTF-8"))
+                    .body(content);
+        } catch (IOException exception) {
+            throw new BusinessException("Failed to read material preview");
+        }
+    }
+
+    @GetMapping("/materials/{materialId}/file")
+    public ResponseEntity<Resource> file(
+            @PathVariable Long materialId,
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "inline") String disposition) {
+        MaterialFile file = materialService.getOwnedMaterialFile(materialId, userId);
+        Resource resource = new FileSystemResource(materialService.resolveFilePath(materialId, userId).toFile());
+        String fileType = file.getFileType() == null ? "" : file.getFileType().toLowerCase(Locale.ROOT);
+        MediaType contentType;
+        if ("pdf".equals(fileType)) {
+            contentType = MediaType.APPLICATION_PDF;
+        } else if ("md".equals(fileType)) {
+            contentType = MediaType.parseMediaType("text/markdown; charset=UTF-8");
+        } else if ("txt".equals(fileType)) {
+            contentType = MediaType.TEXT_PLAIN;
+        } else {
+            contentType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        ContentDisposition contentDisposition = "attachment".equalsIgnoreCase(disposition)
+                ? ContentDisposition.attachment().filename(file.getOriginalName(), StandardCharsets.UTF_8).build()
+                : ContentDisposition.inline().filename(file.getOriginalName(), StandardCharsets.UTF_8).build();
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
+                .body(resource);
+    }
+
+    private String readPreviewContent(Path path, String fileType) throws IOException {
+        if ("md".equals(fileType) || "txt".equals(fileType)) {
+            return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        }
+        if ("docx".equals(fileType)) {
+            try (InputStream inputStream = Files.newInputStream(path);
+                    XWPFDocument document = new XWPFDocument(inputStream);
+                    XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+                return extractor.getText();
+            }
+        }
+        if ("doc".equals(fileType)) {
+            try (InputStream inputStream = Files.newInputStream(path);
+                    HWPFDocument document = new HWPFDocument(inputStream);
+                    WordExtractor extractor = new WordExtractor(document)) {
+                return extractor.getText();
+            }
+        }
+        throw new BusinessException("Unsupported material preview type");
     }
 
     @GetMapping("/materials/{materialId}/similar")

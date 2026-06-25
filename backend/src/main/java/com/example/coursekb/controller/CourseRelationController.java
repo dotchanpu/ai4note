@@ -23,6 +23,11 @@ public class CourseRelationController {
         this.courseRelationService = courseRelationService;
     }
 
+    @GetMapping("/course-relations")
+    public List<CourseRelationVO> listByUser(@RequestParam Long userId) {
+        return courseRelationService.listByUser(userId);
+    }
+
     @GetMapping("/courses/{courseId}/relations")
     public List<CourseRelationVO> list(@PathVariable Long courseId, @RequestParam Long userId) {
         return courseRelationService.list(courseId, userId);

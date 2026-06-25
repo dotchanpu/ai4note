@@ -46,11 +46,21 @@ public class KnowledgeItemVO {
         if (status == null) {
             return;
         }
-        masteryStatus = status.getMasteryStatus();
+        masteryStatus = normalizeMasteryStatus(status.getMasteryStatus());
         masteryScore = status.getMasteryScore();
         masteryNote = status.getNote();
         lastReviewTime = status.getLastReviewTime();
         masteryUpdateTime = status.getUpdateTime();
+    }
+
+    private static String normalizeMasteryStatus(String value) {
+        if ("MASTERED".equals(value)) {
+            return "MASTERED";
+        }
+        if ("LEARNING".equals(value) || "WEAK".equals(value) || "NEED_REVIEW".equals(value)) {
+            return "LEARNING";
+        }
+        return "UNKNOWN";
     }
 
     public Long getId() { return id; }

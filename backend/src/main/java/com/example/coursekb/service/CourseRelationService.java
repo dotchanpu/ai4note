@@ -42,6 +42,20 @@ public class CourseRelationService {
                 .collect(Collectors.toList());
     }
 
+    public List<CourseRelationVO> listByUser(Long userId) {
+        List<Course> courses = courseService.listByUser(userId);
+        if (courses.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return courseRelationRepository
+                .findByCourseIdInOrderByCourseIdAscSortOrderAscIdAsc(courses.stream()
+                        .map(Course::getId)
+                        .collect(Collectors.toList()))
+                .stream()
+                .map(this::toVO)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public CourseRelationVO create(Long courseId, Long userId, CourseRelationRequest request) {
         courseService.getOwnedCourse(courseId, userId);

@@ -19,3 +19,13 @@ export function deleteReviewProfile(profileId, userId) {
     params: { userId }
   })
 }
+
+export function generateReviewAsset(courseId, data) {
+  return request.post(`/courses/${courseId}/review-assets/generate`, data, {
+    timeout: 180000
+  })
+}
+
+export function reviewAssetDownloadUrl(taskId, userId) {
+  return `/api/review-assets/${taskId}/download?userId=${encodeURIComponent(userId)}`
+}

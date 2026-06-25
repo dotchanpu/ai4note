@@ -1,6 +1,6 @@
 package com.example.coursekb.service;
 
-import com.example.coursekb.dto.MockExamGenerateRequest;
+import com.example.coursekb.dto.ReviewAssetGenerateRequest;
 import com.example.coursekb.entity.AiGenerationTask;
 import com.example.coursekb.entity.Course;
 import com.example.coursekb.entity.CourseRelation;
@@ -13,12 +13,11 @@ import com.example.coursekb.mapper.KnowledgeItemRepository;
 import com.example.coursekb.mapper.TeacherProfileRepository;
 import com.example.coursekb.vo.AiGenerationTaskVO;
 import com.example.coursekb.vo.ExamKnowledgeStatVO;
-import com.example.coursekb.vo.MockExamGenerateResultVO;
+import com.example.coursekb.vo.ReviewAssetGenerateResultVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,27 +27,24 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
-public class MockExamService {
+public class ReviewAssetService {
     private static final DateTimeFormatter FILE_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-    private static final Set<String> DIFFICULTIES = new HashSet<>(Arrays.asList(
-            "EASY", "MEDIUM", "MEDIUM_HARD", "HARD"));
-    private static final int MAX_KNOWLEDGE_ITEMS = 120;
-    private static final int MAX_PREREQUISITE_KNOWLEDGE_ITEMS = 30;
+    private static final Set<String> OUTPUT_TYPES = new HashSet<>(Arrays.asList(
+            "REVIEW_NOTE", "OUTLINE", "FLASHCARDS", "CHECKLIST"));
+    private static final int MAX_CURRENT_KNOWLEDGE_ITEMS = 150;
+    private static final int MAX_PREREQUISITE_KNOWLEDGE_ITEMS = 50;
     private static final int MAX_STATS = 40;
-    private static final int MAX_KNOWLEDGE_CONTENT_LENGTH = 500;
+    private static final int MAX_KNOWLEDGE_CONTENT_LENGTH = 520;
 
     private final CourseService courseService;
     private final TeacherProfileRepository teacherProfileRepository;
@@ -62,7 +58,7 @@ public class MockExamService {
     private final ObjectMapper objectMapper;
     private final Path storageRoot;
 
-    public MockExamService(
+    public ReviewAssetService(
             CourseService courseService,
             TeacherProfileRepository teacherProfileRepository,
             CourseRelationRepository courseRelationRepository,
@@ -87,42 +83,35 @@ public class MockExamService {
         this.storageRoot = Paths.get(storageRoot).toAbsolutePath().normalize();
     }
 
-    public MockExamGenerateResultVO generate(Long courseId, MockExamGenerateRequest request) {
+    public ReviewAssetGenerateResultVO generate(Long courseId, ReviewAssetGenerateRequest request) {
         Course course = courseService.getOwnedCourse(courseId, request.getUserId());
+        String outputType = normalizeOutputType(request.getOutputType());
         TeacherProfile profile = getOwnedProfile(request.getTeacherProfileId(), request.getUserId(), courseId);
-        int questionCount = normalizeQuestionCount(request.getQuestionCount());
-        String difficulty = normalizeDifficulty(request.getDifficultyLevel());
-
-        List<KnowledgeItem> knowledgeItems =
-                knowledgeItemRepository.findByCourseIdOrderByImportanceLevelDescIdDesc(courseId);
+        List<KnowledgeItem> knowledgeItems = knowledgeItemRepository
+                .findByCourseIdOrderByImportanceLevelDescIdDesc(courseId)
+                .stream()
+                .limit(MAX_CURRENT_KNOWLEDGE_ITEMS)
+                .collect(Collectors.toList());
         if (knowledgeItems.isEmpty()) {
-            throw new BusinessException("请先生成课程知识点，再生成模拟题");
+            throw new BusinessException("请先生成课程知识点，再生成复习资料");
         }
-        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(courseId, request.getUserId(), null, null, null, null);
-        List<KnowledgeItem> promptItems = selectPromptKnowledgeItems(knowledgeItems, stats);
         List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups = loadPrerequisiteKnowledge(
                 course,
                 request.getUserId(),
                 shouldIncludePrerequisites(request));
+        List<ExamKnowledgeStatVO> stats = examQuestionService.listKnowledgeStats(
+                courseId, request.getUserId(), null, null, null);
 
-        String systemPrompt = buildSystemPrompt();
-        String userPrompt = buildUserPrompt(
-                course,
-                profile,
-                promptItems,
-                prerequisiteKnowledgeGroups,
-                stats,
-                questionCount,
-                difficulty,
-                request.getCustomRequirement());
+        String systemPrompt = buildSystemPrompt(outputType);
+        String userPrompt = buildUserPrompt(course, profile, knowledgeItems, prerequisiteKnowledgeGroups, stats, request);
         String prompt = systemPrompt + "\n\n" + userPrompt;
         AiGenerationTask task = aiGenerationTaskService.createTask(
                 request.getUserId(),
                 courseId,
-                "MOCK_EXAM",
+                "REVIEW_GENERATION",
                 prompt,
                 null,
-                profile.getId(),
+                profile == null ? null : profile.getId(),
                 null);
         aiGenerationTaskService.markRunning(task.getId());
 
@@ -135,34 +124,36 @@ public class MockExamService {
                     request.getModel(),
                     8192);
             JsonNode root = parseJson(json);
-            JsonNode questions = questionsNode(root);
-            if (!questions.isArray() || questions.isEmpty()) {
-                throw new BusinessException("AI 未生成有效模拟题");
+            String title = textOrDefault(root.path("title"), course.getCourseName() + " " + outputTypeLabel(outputType));
+            String markdown = textOrDefault(root.path("markdown"), null);
+            if (markdown == null || markdown.trim().isEmpty()) {
+                throw new BusinessException("AI 未生成有效 Markdown 内容");
             }
-            String markdown = renderMarkdown(course, profile, root, questions, stats, difficulty);
-            Path outputPath = buildOutputPath(request.getUserId(), courseId, task.getId());
+            Path outputPath = buildOutputPath(request.getUserId(), courseId, outputType, task.getId());
             Files.createDirectories(outputPath.getParent());
             Files.write(outputPath, markdown.getBytes(StandardCharsets.UTF_8));
             String resultPath = storageRoot.relativize(outputPath).toString().replace('\\', '/');
             aiGenerationTaskService.markSuccess(task.getId(), resultPath);
             AiGenerationTask savedTask = aiGenerationTaskRepository.findById(task.getId()).orElse(task);
-            String title = textOrDefault(root.path("title"), course.getCourseName() + " 模拟题");
-            return new MockExamGenerateResultVO(
+            String materialTitle = title.endsWith(outputTypeLabel(outputType))
+                    ? title
+                    : title + " - " + outputTypeLabel(outputType);
+            return new ReviewAssetGenerateResultVO(
                     AiGenerationTaskVO.from(savedTask),
                     title,
+                    outputType,
                     resultPath,
                     markdown,
-                    questions.size(),
                     materialService.registerGeneratedFile(
                             request.getUserId(),
                             courseId,
-                            title,
-                            "EXAM",
-                            "AI generated mock exam Markdown",
+                            materialTitle,
+                            "NOTE",
+                            outputTypeLabel(outputType) + " / AI generated Markdown",
                             outputPath));
         } catch (IOException exception) {
             aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
-            throw new BusinessException("模拟题结果文件保存失败");
+            throw new BusinessException(outputTypeLabel(outputType) + "结果文件保存失败");
         } catch (RuntimeException exception) {
             aiGenerationTaskService.markFailed(task.getId(), exception.getMessage());
             throw exception;
@@ -170,78 +161,44 @@ public class MockExamService {
     }
 
     public Path resolveDownloadPath(Long taskId, Long userId) {
-        AiGenerationTask task = getOwnedMockExamTask(taskId, userId);
+        AiGenerationTask task = getOwnedReviewAssetTask(taskId, userId);
         if (!"SUCCESS".equals(task.getStatus()) || task.getResultPath() == null || task.getResultPath().trim().isEmpty()) {
-            throw new BusinessException("模拟题结果尚未生成");
+            throw new BusinessException("复习资料尚未生成");
         }
         Path path = storageRoot.resolve(task.getResultPath()).normalize();
         if (!path.startsWith(storageRoot) || !Files.exists(path)) {
-            throw new BusinessException("模拟题结果文件不存在");
+            throw new BusinessException("复习资料结果文件不存在");
         }
         return path;
     }
 
     public String buildDownloadFilename(Long taskId, Long userId) {
-        AiGenerationTask task = getOwnedMockExamTask(taskId, userId);
-        return "mock-exam-" + task.getCourseId() + "-" + task.getId() + ".md";
+        AiGenerationTask task = getOwnedReviewAssetTask(taskId, userId);
+        return "review-asset-" + task.getCourseId() + "-" + task.getId() + ".md";
     }
 
-    private AiGenerationTask getOwnedMockExamTask(Long taskId, Long userId) {
+    private AiGenerationTask getOwnedReviewAssetTask(Long taskId, Long userId) {
         AiGenerationTask task = aiGenerationTaskRepository.findByIdAndUserId(taskId, userId)
-                .orElseThrow(() -> new BusinessException("模拟题任务不存在或无权访问"));
+                .orElseThrow(() -> new BusinessException("复习资料任务不存在或无权访问"));
         courseService.getOwnedCourse(task.getCourseId(), userId);
-        if (!"MOCK_EXAM".equals(task.getTaskType())) {
-            throw new BusinessException("该任务不是模拟题生成任务");
+        if (!"REVIEW_GENERATION".equals(task.getTaskType())
+                || task.getResultPath() == null
+                || !task.getResultPath().startsWith("review-assets/")) {
+            throw new BusinessException("该任务不是复习资料生成任务");
         }
         return task;
     }
 
     private TeacherProfile getOwnedProfile(Long profileId, Long userId, Long courseId) {
+        if (profileId == null) {
+            return null;
+        }
         TeacherProfile profile = teacherProfileRepository.findByIdAndUserId(profileId, userId)
                 .orElseThrow(() -> new BusinessException("教师画像不存在或无权访问"));
         if (!courseId.equals(profile.getCourseId())) {
             throw new BusinessException("教师画像不属于当前课程");
         }
         return profile;
-    }
-
-    private int normalizeQuestionCount(Integer value) {
-        int normalized = value == null ? 8 : value;
-        if (normalized < 1 || normalized > 30) {
-            throw new BusinessException("题目数量必须在 1 到 30 之间");
-        }
-        return normalized;
-    }
-
-    private String normalizeDifficulty(String value) {
-        String normalized = value == null || value.trim().isEmpty()
-                ? "MEDIUM"
-                : value.trim().replace('-', '_').toUpperCase(Locale.ROOT);
-        if (!DIFFICULTIES.contains(normalized)) {
-            throw new BusinessException("不支持的模拟题难度：" + normalized);
-        }
-        return normalized;
-    }
-
-    private List<KnowledgeItem> selectPromptKnowledgeItems(
-            List<KnowledgeItem> knowledgeItems,
-            List<ExamKnowledgeStatVO> stats) {
-        Map<Long, KnowledgeItem> byId = knowledgeItems.stream()
-                .collect(Collectors.toMap(KnowledgeItem::getId, item -> item, (left, right) -> left));
-        LinkedHashMap<Long, KnowledgeItem> selected = new LinkedHashMap<>();
-        for (ExamKnowledgeStatVO stat : stats.stream().limit(MAX_STATS).collect(Collectors.toList())) {
-            KnowledgeItem item = byId.get(stat.getKnowledgeItemId());
-            if (item != null) {
-                selected.put(item.getId(), item);
-            }
-        }
-        for (KnowledgeItem item : knowledgeItems) {
-            selected.putIfAbsent(item.getId(), item);
-            if (selected.size() >= MAX_KNOWLEDGE_ITEMS) {
-                break;
-            }
-        }
-        return new ArrayList<>(selected.values());
     }
 
     private List<PrerequisiteKnowledgeGroup> loadPrerequisiteKnowledge(
@@ -258,7 +215,7 @@ public class MockExamService {
         if (relations.isEmpty()) {
             return Collections.emptyList();
         }
-        int perCourseLimit = Math.max(5, MAX_PREREQUISITE_KNOWLEDGE_ITEMS / relations.size());
+        int perCourseLimit = Math.max(8, MAX_PREREQUISITE_KNOWLEDGE_ITEMS / relations.size());
         int remaining = MAX_PREREQUISITE_KNOWLEDGE_ITEMS;
         List<PrerequisiteKnowledgeGroup> groups = new ArrayList<>();
         for (CourseRelation relation : relations) {
@@ -279,15 +236,12 @@ public class MockExamService {
         return groups;
     }
 
-    private String buildSystemPrompt() {
-        return "You are AI4Note's mock exam generation assistant. "
-                + "Generate a Chinese mock exam strictly from the provided teacher profile, knowledge items, and exam frequency stats. "
-                + "Return only a valid JSON object with the shape "
-                + "{\"title\":\"...\",\"instructions\":\"...\",\"questions\":["
-                + "{\"questionNo\":\"1\",\"questionType\":\"...\",\"difficultyLevel\":\"...\",\"score\":10,"
-                + "\"knowledgeTitle\":\"...\",\"questionText\":\"...\",\"answerOutline\":\"...\",\"gradingRubric\":\"...\"}]}. "
-                + "Do not invent facts outside the supplied course context. "
-                + "Use the teacher profile to imitate exam style, preferred question types, grading preference, focus topics, and avoid topics.";
+    private String buildSystemPrompt(String outputType) {
+        return "You are AI4Note's Chinese review asset generation assistant. "
+                + "Return only a valid JSON object with fields {\"title\":\"...\",\"markdown\":\"...\"}. "
+                + "The markdown field must contain polished Markdown content for " + outputTypeLabel(outputType) + ". "
+                + "Use headings, lists, tables where appropriate. Do not include code fences around the markdown. "
+                + outputRules(outputType);
     }
 
     private String buildUserPrompt(
@@ -296,36 +250,44 @@ public class MockExamService {
             List<KnowledgeItem> knowledgeItems,
             List<PrerequisiteKnowledgeGroup> prerequisiteKnowledgeGroups,
             List<ExamKnowledgeStatVO> stats,
-            int questionCount,
-            String difficulty,
-            String customRequirement) {
+            ReviewAssetGenerateRequest request) {
         StringBuilder builder = new StringBuilder();
         builder.append("Course:\n");
         builder.append("- name: ").append(course.getCourseName()).append('\n');
-        if (course.getCourseCode() != null) {
-            builder.append("- code: ").append(course.getCourseCode()).append('\n');
-        }
-        if (course.getSemester() != null) {
-            builder.append("- semester: ").append(course.getSemester()).append('\n');
-        }
-        builder.append("\nTeacher profile:\n");
-        builder.append("- teacherName: ").append(profile.getTeacherName()).append('\n');
-        appendOptional(builder, "- analysisStatus: ", profile.getAnalysisStatus());
-        appendOptional(builder, "- confidenceScore: ", profile.getConfidenceScore());
-        appendOptional(builder, "- examStyle: ", profile.getExamStyle());
-        appendOptional(builder, "- questionPreference: ", profile.getQuestionPreference());
-        appendOptional(builder, "- gradingPreference: ", profile.getGradingPreference());
-        appendOptional(builder, "- focusTopics: ", profile.getFocusTopics());
-        appendOptional(builder, "- avoidTopics: ", profile.getAvoidTopics());
-        appendOptional(builder, "- sourceSummary: ", profile.getSourceSummary());
+        appendOptional(builder, "- code: ", course.getCourseCode());
+        appendOptional(builder, "- semester: ", course.getSemester());
+        appendOptional(builder, "- description: ", course.getDescription());
 
-        builder.append("\nExam frequency stats, sorted by frequency:\n");
+        builder.append("\nRequested output:\n");
+        builder.append("- type: ").append(normalizeOutputType(request.getOutputType())).append('\n');
+        builder.append("- typeLabel: ").append(outputTypeLabel(normalizeOutputType(request.getOutputType()))).append('\n');
+        builder.append("- difficultyLevel: ").append(normalizeDifficulty(request.getDifficultyLevel())).append('\n');
+        builder.append("- includePrerequisites: ").append(shouldIncludePrerequisites(request)).append('\n');
+        builder.append("- currentCourseKnowledgeCount: ").append(knowledgeItems.size()).append('\n');
+        builder.append("- prerequisiteKnowledgeCount: ").append(prerequisiteKnowledgeGroups.stream()
+                .mapToInt(group -> group.items.size())
+                .sum()).append('\n');
+
+        builder.append("\nTeacher profile:\n");
+        if (profile == null) {
+            builder.append("- No teacher profile selected. Use course knowledge and exam stats.\n");
+        } else {
+            builder.append("- teacherName: ").append(profile.getTeacherName()).append('\n');
+            appendOptional(builder, "- examStyle: ", profile.getExamStyle());
+            appendOptional(builder, "- questionPreference: ", profile.getQuestionPreference());
+            appendOptional(builder, "- gradingPreference: ", profile.getGradingPreference());
+            appendOptional(builder, "- focusTopics: ", profile.getFocusTopics());
+            appendOptional(builder, "- avoidTopics: ", profile.getAvoidTopics());
+            appendOptional(builder, "- sourceSummary: ", profile.getSourceSummary());
+        }
+
+        builder.append("\nHigh-frequency exam stats:\n");
         if (stats.isEmpty()) {
-            builder.append("- No mapped historical exam stats. Use knowledge importance and teacher profile instead.\n");
+            builder.append("- No mapped historical exam stats. Use importance levels.\n");
         } else {
             for (ExamKnowledgeStatVO stat : stats.stream().limit(MAX_STATS).collect(Collectors.toList())) {
-                builder.append("- knowledge: ").append(stat.getKnowledgeTitle())
-                        .append("; itemType: ").append(nullToDash(stat.getKnowledgeItemType()))
+                builder.append("- ").append(stat.getKnowledgeTitle())
+                        .append("; type: ").append(nullToDash(stat.getKnowledgeItemType()))
                         .append("; chapter: ").append(nullToDash(stat.getChapterTitle()))
                         .append("; questionCount: ").append(stat.getQuestionCount())
                         .append("; totalScore: ").append(stat.getTotalScore() == null ? "-" : stat.getTotalScore())
@@ -334,15 +296,23 @@ public class MockExamService {
             }
         }
 
-        builder.append("\nCandidate knowledge items:\n");
+        builder.append("\nKnowledge scope rule:\n");
+        builder.append("- Current course knowledge is the main body of the review asset.\n");
+        if (prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("- No prerequisite knowledge items are supplied. Do not invent prerequisite content.\n");
+        } else {
+            builder.append("- Target content balance: current course 75%-85%, prerequisite foundations 15%-25%.\n");
+            builder.append("- Use prerequisite items only to explain foundations, repair weak links, or add prerequisite recap sections.\n");
+            builder.append("- Mark prerequisite content clearly with labels such as 前置基础 or 补基础.\n");
+        }
+
+        builder.append("\nCurrent course knowledge items:\n");
         for (KnowledgeItem item : knowledgeItems) {
             appendKnowledgeItem(builder, item);
         }
 
-        builder.append("\nPrerequisite knowledge items:\n");
-        if (prerequisiteKnowledgeGroups.isEmpty()) {
-            builder.append("- No prerequisite knowledge items are supplied. Do not invent prerequisite content.\n");
-        } else {
+        if (!prerequisiteKnowledgeGroups.isEmpty()) {
+            builder.append("\nPrerequisite course knowledge items:\n");
             for (PrerequisiteKnowledgeGroup group : prerequisiteKnowledgeGroups) {
                 builder.append("- course: ").append(group.course.getCourseName());
                 if (group.course.getCourseCode() != null && !group.course.getCourseCode().trim().isEmpty()) {
@@ -357,87 +327,43 @@ public class MockExamService {
             }
         }
 
-        builder.append("\nGeneration requirements:\n");
-        builder.append("- questionCount: ").append(questionCount).append('\n');
-        builder.append("- difficultyLevel: ").append(difficulty).append('\n');
-        if (prerequisiteKnowledgeGroups.isEmpty()) {
-            builder.append("- Generate questions from current course knowledge only.\n");
-        } else {
-            builder.append("- Target question focus: current course 80%-90%, prerequisite foundations 10%-20%.\n");
-            builder.append("- Prerequisite items should appear only as foundation checks or context needed to solve current-course questions.\n");
-        }
-        builder.append("- Include a balanced set of objective and subjective questions when the teacher profile supports it.\n");
-        builder.append("- Prioritize high-frequency historical exam knowledge, then high-importance knowledge items.\n");
-        builder.append("- For each question, provide answerOutline and gradingRubric.\n");
-        builder.append("- Use Chinese for the exam content.\n");
-        if (customRequirement != null && !customRequirement.trim().isEmpty()) {
-            builder.append("- Custom requirement: ").append(customRequirement.trim()).append('\n');
+        builder.append("\nWriting requirements:\n");
+        builder.append("- Use Chinese.\n");
+        builder.append("- Keep the content exam-oriented and directly usable by a student.\n");
+        builder.append("- Prioritize high-frequency exam stats and high-importance knowledge items.\n");
+        builder.append("- If teacher profile exists, adapt focus and practice advice to it.\n");
+        if (request.getCustomRequirement() != null && !request.getCustomRequirement().trim().isEmpty()) {
+            builder.append("- Custom requirement: ").append(request.getCustomRequirement().trim()).append('\n');
         }
         return builder.toString();
     }
 
-    private String renderMarkdown(
-            Course course,
-            TeacherProfile profile,
-            JsonNode root,
-            JsonNode questions,
-            List<ExamKnowledgeStatVO> stats,
-            String difficulty) {
-        String title = textOrDefault(root.path("title"), course.getCourseName() + " 模拟题");
-        StringBuilder builder = new StringBuilder();
-        builder.append("# ").append(title).append("\n\n");
-        builder.append("- 课程：").append(course.getCourseName()).append('\n');
-        builder.append("- 教师画像：").append(profile.getTeacherName()).append('\n');
-        builder.append("- 难度：").append(difficulty).append('\n');
-        builder.append("- 生成时间：").append(LocalDateTime.now()).append("\n\n");
-        String instructions = textOrDefault(root.path("instructions"), null);
-        if (instructions != null) {
-            builder.append("## 作答说明\n\n").append(instructions).append("\n\n");
+    private String outputRules(String outputType) {
+        if ("REVIEW_NOTE".equals(outputType)) {
+            return "For review notes, include sections: overview, key concepts, common mistakes, exam focus, quick recap.";
         }
-        builder.append("## 试题\n\n");
-        int index = 1;
-        for (JsonNode question : questions) {
-            builder.append("### ").append(index).append(". ")
-                    .append(textOrDefault(question.path("questionType"), "试题")).append('\n');
-            appendMarkdownLine(builder, "知识点", textOrDefault(question.path("knowledgeTitle"), null));
-            appendMarkdownLine(builder, "难度", textOrDefault(question.path("difficultyLevel"), difficulty));
-            appendMarkdownLine(builder, "分值", decimalText(question.path("score")));
-            builder.append('\n')
-                    .append(textOrDefault(question.path("questionText"), ""))
-                    .append("\n\n");
-            appendMarkdownBlock(builder, "参考答案", textOrDefault(question.path("answerOutline"), null));
-            appendMarkdownBlock(builder, "评分要点", textOrDefault(question.path("gradingRubric"), null));
-            index++;
+        if ("OUTLINE".equals(outputType)) {
+            return "For review outline, include hierarchical headings, chapter/topic order, priorities, and time allocation advice.";
         }
-        if (!stats.isEmpty()) {
-            builder.append("## 高频依据\n\n");
-            for (ExamKnowledgeStatVO stat : stats.stream()
-                    .sorted(Comparator.comparingLong(ExamKnowledgeStatVO::getQuestionCount).reversed())
-                    .limit(10)
-                    .collect(Collectors.toList())) {
-                builder.append("- ").append(stat.getKnowledgeTitle())
-                        .append("：").append(stat.getQuestionCount()).append(" 次");
-                if (stat.getTotalScore() != null) {
-                    builder.append("，累计 ").append(stat.getTotalScore()).append(" 分");
-                }
-                if (stat.getLatestExamYear() != null) {
-                    builder.append("，最近年份 ").append(stat.getLatestExamYear());
-                }
-                builder.append('\n');
-            }
+        if ("FLASHCARDS".equals(outputType)) {
+            return "For flashcards, produce a Markdown table with columns: front, back, tag, priority.";
         }
-        return builder.toString();
+        if ("CHECKLIST".equals(outputType)) {
+            return "For checklist, produce Markdown checkboxes grouped by topic and include acceptance criteria.";
+        }
+        return "";
     }
 
-    private Path buildOutputPath(Long userId, Long courseId, Long taskId) {
-        String fileName = "mock-exam-" + FILE_TIME_FORMAT.format(LocalDateTime.now())
+    private Path buildOutputPath(Long userId, Long courseId, String outputType, Long taskId) {
+        String fileName = outputType.toLowerCase(Locale.ROOT).replace('_', '-')
+                + "-" + FILE_TIME_FORMAT.format(LocalDateTime.now())
                 + "-task-" + taskId + ".md";
-        Path directory = storageRoot.resolve("mock-exams")
+        Path directory = storageRoot.resolve("review-assets")
                 .resolve("user-" + userId)
                 .resolve("course-" + courseId);
         Path output = directory.resolve(fileName).normalize();
         if (!output.startsWith(directory.normalize()) || !output.startsWith(storageRoot)) {
-            throw new BusinessException("模拟题文件路径不合法");
+            throw new BusinessException("复习资料文件路径不合法");
         }
         return output;
     }
@@ -451,15 +377,11 @@ public class MockExamService {
                 try {
                     return objectMapper.readTree(extracted);
                 } catch (JsonProcessingException ignored) {
-                    throw new BusinessException("AI 模拟题 JSON 解析失败");
+                    throw new BusinessException("AI 复习资料 JSON 解析失败");
                 }
             }
-            throw new BusinessException("AI 模拟题 JSON 解析失败");
+            throw new BusinessException("AI 复习资料 JSON 解析失败");
         }
-    }
-
-    private JsonNode questionsNode(JsonNode root) {
-        return root.isArray() ? root : root.path("questions");
     }
 
     private String normalizeAiJson(String raw) {
@@ -480,15 +402,10 @@ public class MockExamService {
     }
 
     private String extractJsonBody(String raw) {
-        int objectStart = raw.indexOf('{');
-        int arrayStart = raw.indexOf('[');
-        if (objectStart < 0 && arrayStart < 0) {
+        int start = raw.indexOf('{');
+        if (start < 0) {
             return null;
         }
-        boolean useArray = objectStart < 0 || (arrayStart >= 0 && arrayStart < objectStart);
-        int start = useArray ? arrayStart : objectStart;
-        char opening = useArray ? '[' : '{';
-        char closing = useArray ? ']' : '}';
         int depth = 0;
         boolean inString = false;
         boolean escaped = false;
@@ -508,9 +425,9 @@ public class MockExamService {
                 inString = true;
                 continue;
             }
-            if (current == opening) {
+            if (current == '{') {
                 depth++;
-            } else if (current == closing) {
+            } else if (current == '}') {
                 depth--;
                 if (depth == 0) {
                     return raw.substring(start, i + 1);
@@ -520,9 +437,33 @@ public class MockExamService {
         return null;
     }
 
-    private void appendOptional(StringBuilder builder, String label, Object value) {
-        if (value != null && !value.toString().trim().isEmpty()) {
-            builder.append(label).append(value.toString().trim()).append('\n');
+    private String normalizeOutputType(String value) {
+        String normalized = value == null || value.trim().isEmpty()
+                ? "REVIEW_NOTE"
+                : value.trim().replace('-', '_').toUpperCase(Locale.ROOT);
+        if (!OUTPUT_TYPES.contains(normalized)) {
+            throw new BusinessException("不支持的复习资料类型：" + normalized);
+        }
+        return normalized;
+    }
+
+    private String normalizeDifficulty(String value) {
+        return value == null || value.trim().isEmpty()
+                ? "MEDIUM"
+                : value.trim().replace('-', '_').toUpperCase(Locale.ROOT);
+    }
+
+    private String outputTypeLabel(String outputType) {
+        if ("REVIEW_NOTE".equals(outputType)) return "复习笔记";
+        if ("OUTLINE".equals(outputType)) return "复习提纲";
+        if ("FLASHCARDS".equals(outputType)) return "记忆卡片";
+        if ("CHECKLIST".equals(outputType)) return "检查清单";
+        return "复习资料";
+    }
+
+    private void appendOptional(StringBuilder builder, String label, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            builder.append(label).append(value.trim()).append('\n');
         }
     }
 
@@ -533,29 +474,15 @@ public class MockExamService {
     }
 
     private void appendKnowledgeItem(StringBuilder builder, KnowledgeItem item) {
-        builder.append("- id: ").append(item.getId())
-                .append("; title: ").append(item.getTitle())
+        builder.append("- ").append(item.getTitle())
                 .append("; type: ").append(item.getItemType())
                 .append("; importance: ").append(item.getImportanceLevel())
                 .append("; content: ").append(abbreviate(item.getContent(), MAX_KNOWLEDGE_CONTENT_LENGTH))
                 .append('\n');
     }
 
-    private boolean shouldIncludePrerequisites(MockExamGenerateRequest request) {
+    private boolean shouldIncludePrerequisites(ReviewAssetGenerateRequest request) {
         return !Boolean.FALSE.equals(request.getIncludePrerequisites());
-    }
-
-    private void appendMarkdownLine(StringBuilder builder, String label, String value) {
-        if (value != null && !value.trim().isEmpty()) {
-            builder.append("- ").append(label).append("：").append(value.trim()).append('\n');
-        }
-    }
-
-    private void appendMarkdownBlock(StringBuilder builder, String title, String value) {
-        if (value != null && !value.trim().isEmpty()) {
-            builder.append("**").append(title).append("**\n\n")
-                    .append(value.trim()).append("\n\n");
-        }
     }
 
     private String textOrDefault(JsonNode node, String defaultValue) {
@@ -564,18 +491,6 @@ public class MockExamService {
         }
         String value = node.asText();
         return value == null || value.trim().isEmpty() ? defaultValue : value.trim();
-    }
-
-    private String decimalText(JsonNode node) {
-        if (node == null || node.isMissingNode() || node.isNull()) {
-            return null;
-        }
-        if (node.isNumber()) {
-            BigDecimal decimal = node.decimalValue();
-            return decimal.stripTrailingZeros().toPlainString();
-        }
-        String value = node.asText();
-        return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
     private String abbreviate(String value, int maxLength) {
